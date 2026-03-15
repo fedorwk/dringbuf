@@ -58,7 +58,7 @@ func TestRingBufferBasic(t *testing.T) {
 		rbuf := dringbuf.NewRingBuffer[int](bufferSize)
 
 		assert.Equal(0, rbuf.Len())
-		assert.Equal(bufferSize, rbuf.Size())
+		assert.Equal(bufferSize, rbuf.Cap())
 		// fill slice with values
 		for i := range bufferSize {
 			rbuf.Append(i)

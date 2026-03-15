@@ -37,10 +37,10 @@ func (b *threadSafe[T]) Len() int {
 	return b.buf.Len()
 }
 
-func (b *threadSafe[T]) Size() int {
+func (b *threadSafe[T]) Cap() int {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.buf.Size()
+	return b.buf.Cap()
 }
 
 func (b *threadSafe[T]) At(idx int) T {
@@ -54,7 +54,7 @@ func (b *threadSafe[T]) At(idx int) T {
 func (b *threadSafe[T]) Last(n int) []T {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	if n > b.Size() {
+	if n > b.Cap() {
 		panic("n out of buffer size")
 	}
 	if l := b.Len(); l < n {

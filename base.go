@@ -34,7 +34,7 @@ func (b *bufferBase[T]) Len() int {
 	return b.len
 }
 
-func (b *bufferBase[T]) Size() int {
+func (b *bufferBase[T]) Cap() int {
 	return b.size
 }
 
