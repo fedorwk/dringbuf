@@ -24,7 +24,8 @@ By maintaining an underlying slice of **2 × capacity**, every element is mirror
 
 As a result:
 
-* `Last(n)` returns a `[]T` without allocation
+* `Last(n)` returns a `[]T` without allocation for base verion (RingBuffer)
+* `Borrow(n)` returns a `[]T` and `release` function without allocation for thread-safe verion (SyncRingBuffer)
 * No copying is required
 * No wrap-around handling is required by the consumer
 * The buffer is allocation-free after initialization
