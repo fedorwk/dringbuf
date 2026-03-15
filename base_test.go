@@ -13,7 +13,7 @@ func TestRingBufferBasic(t *testing.T) {
 
 	t.Run("basic_tests", func(t *testing.T) {
 		t.Parallel()
-		rbuf := dringbuf.NewDRingBuffer[int](3)
+		rbuf := dringbuf.NewRingBuffer[int](3)
 
 		assert.Equal(0, rbuf.Len())
 		assert.Equal([]int{}, rbuf.Last(3))
@@ -55,7 +55,7 @@ func TestRingBufferBasic(t *testing.T) {
 	t.Run("test_large", func(t *testing.T) {
 		t.Parallel()
 		bufferSize := 1000000
-		rbuf := dringbuf.NewDRingBuffer[int](bufferSize)
+		rbuf := dringbuf.NewRingBuffer[int](bufferSize)
 
 		assert.Equal(0, rbuf.Len())
 		assert.Equal(bufferSize, rbuf.Size())
