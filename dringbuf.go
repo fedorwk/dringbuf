@@ -1,18 +1,18 @@
 package dringbuf
 
-type bufferBase[T any] struct {
+type dbuffer[T any] struct {
 	buf  []T
 	size int
 	len  int
 	cur  int
 }
 
-func NewRingBuffer[T any](size int) RingBuffer[T] {
+func NewDRingBuffer[T any](size int) RingBuffer[T] {
 	doubleSize := size * 2
 	if doubleSize < size { // integer overflow
-		panic("struct size overflow. Max possible size of buffer is MaxInt/2 for target architecture")
+		panic("struct size overflow. Max size of buffer is MaxInt/2 for target architecture")
 	}
-	return &bufferBase[T]{
+	return &dbuffer[T]{
 		buf:  make([]T, doubleSize),
 		size: size,
 		len:  0,
@@ -20,7 +20,7 @@ func NewRingBuffer[T any](size int) RingBuffer[T] {
 	}
 }
 
-func (b *bufferBase[T]) Append(elem T) {
+func (b *dbuffer[T]) Append(elem T) {
 	b.buf[b.cur] = elem
 	b.buf[b.cur+b.size] = elem
 	b.cur = (b.cur + 1) % b.size
@@ -30,15 +30,15 @@ func (b *bufferBase[T]) Append(elem T) {
 	}
 }
 
-func (b *bufferBase[T]) Len() int {
+func (b *dbuffer[T]) Len() int {
 	return b.len
 }
 
-func (b *bufferBase[T]) Cap() int {
+func (b *dbuffer[T]) Cap() int {
 	return b.size
 }
 
-func (b *bufferBase[T]) At(idx int) T {
+func (b *dbuffer[T]) At(idx int) T {
 	if idx >= b.size {
 		panic("idx out of buffer size")
 	}
@@ -46,7 +46,7 @@ func (b *bufferBase[T]) At(idx int) T {
 
 }
 
-func (b *bufferBase[T]) Last(n int) []T {
+func (b *dbuffer[T]) Last(n int) []T {
 	if n > b.size {
 		panic("n out of buffer size")
 	}
@@ -59,7 +59,7 @@ func (b *bufferBase[T]) Last(n int) []T {
 	return b.buf[end-n : end]
 }
 
-func (b *bufferBase[T]) Clear() {
+func (b *dbuffer[T]) Clear() {
 	var zero T
 	for i := range b.buf {
 		b.buf[i] = zero
@@ -68,6 +68,6 @@ func (b *bufferBase[T]) Clear() {
 	b.len = 0
 }
 
-func (b bufferBase[T]) start() int {
+func (b dbuffer[T]) start() int {
 	return b.cur + b.size - b.len
 }

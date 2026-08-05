@@ -81,7 +81,6 @@ func runRingBufferContractTests(t *testing.T, newBuf ringBufferFactory) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

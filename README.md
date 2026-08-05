@@ -1,12 +1,15 @@
 # dringbuf
-`[double-sized] ring buffer`  
+`[double-sized] ring buffer`
 
-A high-performance, generic **ring buffer** implementation in Go that uses a **double-sized underlying slice** to provide a continuous `slice` view of its elements at any moment in time.
+Generic ring buffer implementations in Go, available in two flavors:
 
-The key design goal is **zero allocations during runtime operations**.
+* **Basic** — a single-array circular buffer (`NewRingBuffer`, `NewThreadSafeRingBuffer`). `Last(n)` / `Borrow(n)` return a freshly allocated `[]T`.
+* **Double-sized** — uses a **2 × capacity** underlying slice to provide a continuous `slice` view of its elements at any moment in time (`NewDRingBuffer`, `NewThreadSafeDRingBuffer`).
+
+The key design goal of the **double-sized** variant is **zero allocations during runtime operations**.
 The only allocation occurs once — at buffer creation.
 
-This makes the structure particularly suitable for **data streaming pipelines**, where consumers expect data as `[]T` and allocation overhead must be avoided.
+This makes it particularly suitable for **data streaming pipelines**, where consumers expect data as `[]T` and allocation overhead must be avoided.
 
 ## Motivation
 
@@ -18,17 +21,19 @@ When the logical window wraps around the end of the underlying array, the data b
 * or allocating a new slice,
 * or exposing two separate slices.
 
-This implementation avoids that entirely.
+The **double-sized** implementation avoids that entirely.
 
 By maintaining an underlying slice of **2 × capacity**, every element is mirrored at an offset equal to the buffer size. This guarantees that the active window is always represented as a **single contiguous slice** in memory.
 
-As a result:
+As a result, for the double-sized variant (`NewDRingBuffer` / `NewThreadSafeDRingBuffer`):
 
-* `Last(n)` returns a `[]T` without allocation for base verion (RingBuffer)
-* `Borrow(n)` returns a `[]T` and `release` function without allocation for thread-safe verion (SyncRingBuffer)
+* `Last(n)` returns a `[]T` without allocation (base version, `RingBuffer`)
+* `Borrow(n)` returns a `[]T` and `release` function without allocation (thread-safe version, `SyncRingBuffer`)
 * No copying is required
 * No wrap-around handling is required by the consumer
 * The buffer is allocation-free after initialization
+
+The **basic** variant (`NewRingBuffer` / `NewThreadSafeRingBuffer`) stores each element once in a single slice of capacity `N`. It uses half the memory of the double-sized variant, but `Last(n)` and `Borrow(n)` always allocate a new slice and copy.
 
 ## Core Idea
 

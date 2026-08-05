@@ -13,6 +13,12 @@ func NewThreadSafeRingBuffer[T any](size int) SyncRingBuffer[T] {
 	}
 }
 
+func NewThreadSafeDRingBuffer[T any](size int) SyncRingBuffer[T] {
+	return &threadSafe[T]{
+		buf: NewDRingBuffer[T](size),
+	}
+}
+
 type release func()
 
 // Returns underlying data with n last elements
