@@ -54,12 +54,17 @@ func (b *threadSafe[T]) At(idx int) T {
 func (b *threadSafe[T]) Last(n int) []T {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	if n > b.Cap() {
+
+	capacity := b.buf.Cap()
+	if n > capacity {
 		panic("n out of buffer size")
 	}
-	if l := b.Len(); l < n {
-		n = l
+
+	length := b.buf.Len()
+	if length < n {
+		n = length
 	}
+
 	res := make([]T, n)
 	copy(res, b.buf.Last(n))
 	return res

@@ -60,7 +60,10 @@ func (b *bufferBase[T]) Last(n int) []T {
 }
 
 func (b *bufferBase[T]) Clear() {
-	b.buf = b.buf[:0]
+	var zero T
+	for i := range b.buf {
+		b.buf[i] = zero
+	}
 	b.cur = 0
 	b.len = 0
 }
