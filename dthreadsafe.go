@@ -2,28 +2,43 @@ package dringbuf
 
 import "sync"
 
-type threadSafe[T any] struct {
-	mu  sync.Mutex
-	buf RingBuffer[T]
+// Release unlocks a buffer previously borrowed via ThreadSafeRingBuffer.Borrow.
+type Release func()
+
+// innerOps is the set of operations ThreadSafeRingBuffer needs from the
+// underlying ring buffer. Instantiations with a concrete B produce direct calls.
+type innerOps[T any] interface {
+	Append(elem T)
+	Len() int
+	Cap() int
+	At(idx int) T
+	Last(n int) []T
+	Clear()
 }
 
-func NewThreadSafeRingBuffer[T any](size int) SyncRingBuffer[T] {
-	return &threadSafe[T]{
+// ThreadSafeRingBuffer serializes access to an underlying ring buffer of type B.
+type ThreadSafeRingBuffer[B innerOps[T], T any] struct {
+	mu  sync.Mutex
+	buf B
+}
+
+// NewThreadSafeRingBuffer creates a thread-safe wrapper around a RingBuffer.
+func NewThreadSafeRingBuffer[T any](size int) *ThreadSafeRingBuffer[*RingBuffer[T], T] {
+	return &ThreadSafeRingBuffer[*RingBuffer[T], T]{
 		buf: NewRingBuffer[T](size),
 	}
 }
 
-func NewThreadSafeDRingBuffer[T any](size int) SyncRingBuffer[T] {
-	return &threadSafe[T]{
+// NewThreadSafeDRingBuffer creates a thread-safe wrapper around a DRingBuffer.
+func NewThreadSafeDRingBuffer[T any](size int) *ThreadSafeRingBuffer[*DRingBuffer[T], T] {
+	return &ThreadSafeRingBuffer[*DRingBuffer[T], T]{
 		buf: NewDRingBuffer[T](size),
 	}
 }
 
-type release func()
-
-// Returns underlying data with n last elements
-// Locks buffer for reading until `release` call
-func (b *threadSafe[T]) Borrow(n int) ([]T, release) {
+// Borrow returns underlying data with n last elements.
+// Locks buffer for reading until `release` call.
+func (b *ThreadSafeRingBuffer[B, T]) Borrow(n int) ([]T, Release) {
 	b.mu.Lock()
 	release := func() {
 		b.mu.Unlock()
@@ -31,25 +46,29 @@ func (b *threadSafe[T]) Borrow(n int) ([]T, release) {
 	return b.buf.Last(n), release
 }
 
-func (b *threadSafe[T]) Append(elem T) {
+// Append adds a new element to the buffer. If the buffer is already full, the oldest element is overwritten.
+func (b *ThreadSafeRingBuffer[B, T]) Append(elem T) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.buf.Append(elem)
 }
 
-func (b *threadSafe[T]) Len() int {
+// Len returns the current number of elements stored in the buffer.
+func (b *ThreadSafeRingBuffer[B, T]) Len() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.Len()
 }
 
-func (b *threadSafe[T]) Cap() int {
+// Cap returns the maximum capacity of the buffer (the total number of elements it can hold).
+func (b *ThreadSafeRingBuffer[B, T]) Cap() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.Cap()
 }
 
-func (b *threadSafe[T]) At(idx int) T {
+// At retrieves the element at the specified index relative to the logical start of the buffer.
+func (b *ThreadSafeRingBuffer[B, T]) At(idx int) T {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.At(idx)
@@ -57,7 +76,7 @@ func (b *threadSafe[T]) At(idx int) T {
 
 // Last returns copy of underlying data
 // To take advantage of threadsafe implementation use Borrow method instead
-func (b *threadSafe[T]) Last(n int) []T {
+func (b *ThreadSafeRingBuffer[B, T]) Last(n int) []T {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -76,7 +95,8 @@ func (b *threadSafe[T]) Last(n int) []T {
 	return res
 }
 
-func (b *threadSafe[T]) Clear() {
+// Clear removes all elements from the buffer and resets it to an empty state.
+func (b *ThreadSafeRingBuffer[B, T]) Clear() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.buf.Clear()

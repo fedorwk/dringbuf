@@ -28,10 +28,15 @@ By maintaining an underlying slice of **2 × capacity**, every element is mirror
 As a result, for the double-sized variant (`NewDRingBuffer` / `NewThreadSafeDRingBuffer`):
 
 * `Last(n)` returns a `[]T` without allocation (base version, `RingBuffer`)
-* `Borrow(n)` returns a `[]T` and `release` function without allocation (thread-safe version, `SyncRingBuffer`)
+* `Borrow(n)` returns a `[]T` and a `Release` function without allocation (thread-safe version, `ThreadSafeRingBuffer`)
 * No copying is required
 * No wrap-around handling is required by the consumer
 * The buffer is allocation-free after initialization
+
+Constructors return concrete types (`*RingBuffer[T]`, `*DRingBuffer[T]`, `*ThreadSafeRingBuffer[B, T]`),
+so method calls are statically dispatched and can be inlined. `NewThreadSafeRingBuffer` and
+`NewThreadSafeDRingBuffer` both return the same `ThreadSafeRingBuffer` wrapper parameterized by
+the concrete underlying buffer type.
 
 The **basic** variant (`NewRingBuffer` / `NewThreadSafeRingBuffer`) stores each element once in a single slice of capacity `N`. It uses half the memory of the double-sized variant, but `Last(n)` and `Borrow(n)` always allocate a new slice and copy.
 

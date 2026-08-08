@@ -54,14 +54,14 @@ func runChannel(o Options, messages int) (time.Duration, bool) {
 	result := make(chan int)
 	go func() {
 		var sum int
-		for i := 0; i < messages; i++ {
+		for range messages {
 			sum += <-ch
 		}
 		result <- sum
 	}()
 
 	start := time.Now()
-	for i := 0; i < messages; i++ {
+	for i := range messages {
 		ch <- i
 	}
 	close(ch)
@@ -71,7 +71,7 @@ func runChannel(o Options, messages int) (time.Duration, bool) {
 }
 
 func runQueue(o Options, messages int) (time.Duration, bool) {
-	var storage dringbuf.RingBuffer[int]
+	var storage buffer
 	switch o.Kind {
 	case MutexBasic:
 		storage = dringbuf.NewRingBuffer[int](o.Capacity)
@@ -87,14 +87,14 @@ func runQueue(o Options, messages int) (time.Duration, bool) {
 	result := make(chan int)
 	go func() {
 		var sum int
-		for i := 0; i < messages; i++ {
+		for range messages {
 			sum += q.pop()
 		}
 		result <- sum
 	}()
 
 	start := time.Now()
-	for i := 0; i < messages; i++ {
+	for i := range messages {
 		q.push(i)
 	}
 	sum := <-result
@@ -102,9 +102,9 @@ func runQueue(o Options, messages int) (time.Duration, bool) {
 	return time.Since(start), sum == messages*(messages-1)/2
 }
 
-// buffer is the subset of the ring-buffer interface the queue needs. Both the
-// raw RingBuffer and the Mutex-guarded SyncRingBuffer satisfy it; for the
-// raw variants q.mu is the only lock protecting storage.
+// buffer is the subset of the ring-buffer operations the queue needs. Both the
+// raw ring buffers and the Mutex-guarded thread-safe variants satisfy it; for
+// the raw variants q.mu is the only lock protecting storage.
 type buffer interface {
 	Append(elem int)
 	Len() int

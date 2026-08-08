@@ -13,25 +13,19 @@ import (
 func TestThreadSafeRingBuffer_Contract(t *testing.T) {
 	t.Parallel()
 
-	runRingBufferContractTests(t, func(size int) dringbuf.RingBuffer[int] {
-		return dringbuf.NewThreadSafeRingBuffer[int](size)
-	})
+	runRingBufferContractTests(t, dringbuf.NewThreadSafeRingBuffer[int])
 }
 
 func TestThreadSafeRingBuffer_ClearAndReuse(t *testing.T) {
 	t.Parallel()
 
-	runRingBufferClearAndReuseTests(t, func(size int) dringbuf.RingBuffer[int] {
-		return dringbuf.NewThreadSafeRingBuffer[int](size)
-	})
+	runRingBufferClearAndReuseTests(t, dringbuf.NewThreadSafeRingBuffer[int])
 }
 
 func TestThreadSafeRingBuffer_Panics(t *testing.T) {
 	t.Parallel()
 
-	runRingBufferCommonPanicTests(t, func(size int) dringbuf.RingBuffer[int] {
-		return dringbuf.NewThreadSafeRingBuffer[int](size)
-	})
+	runRingBufferCommonPanicTests(t, dringbuf.NewThreadSafeRingBuffer[int])
 }
 
 func TestThreadSafeRingBuffer_LastReturnsCopy(t *testing.T) {
@@ -187,25 +181,19 @@ func TestThreadSafeRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 func TestThreadSafeDRingBuffer_Contract(t *testing.T) {
 	t.Parallel()
 
-	runRingBufferContractTests(t, func(size int) dringbuf.RingBuffer[int] {
-		return dringbuf.NewThreadSafeDRingBuffer[int](size)
-	})
+	runRingBufferContractTests(t, dringbuf.NewThreadSafeDRingBuffer[int])
 }
 
 func TestThreadSafeDRingBuffer_ClearAndReuse(t *testing.T) {
 	t.Parallel()
 
-	runRingBufferClearAndReuseTests(t, func(size int) dringbuf.RingBuffer[int] {
-		return dringbuf.NewThreadSafeDRingBuffer[int](size)
-	})
+	runRingBufferClearAndReuseTests(t, dringbuf.NewThreadSafeDRingBuffer[int])
 }
 
 func TestThreadSafeDRingBuffer_Panics(t *testing.T) {
 	t.Parallel()
 
-	runRingBufferCommonPanicTests(t, func(size int) dringbuf.RingBuffer[int] {
-		return dringbuf.NewThreadSafeDRingBuffer[int](size)
-	})
+	runRingBufferCommonPanicTests(t, dringbuf.NewThreadSafeDRingBuffer[int])
 }
 
 func TestThreadSafeDRingBuffer_LastReturnsCopy(t *testing.T) {

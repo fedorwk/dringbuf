@@ -10,23 +10,17 @@ import (
 
 func TestDRingBuffer_Contract(t *testing.T) {
 	t.Parallel()
-	runRingBufferContractTests(t, func(size int) dringbuf.RingBuffer[int] {
-		return dringbuf.NewDRingBuffer[int](size)
-	})
+	runRingBufferContractTests(t, dringbuf.NewDRingBuffer[int])
 }
 
 func TestDRingBuffer_ClearAndReuse(t *testing.T) {
 	t.Parallel()
-	runRingBufferClearAndReuseTests(t, func(size int) dringbuf.RingBuffer[int] {
-		return dringbuf.NewDRingBuffer[int](size)
-	})
+	runRingBufferClearAndReuseTests(t, dringbuf.NewDRingBuffer[int])
 }
 
 func TestDRingBuffer_Panics(t *testing.T) {
 	t.Parallel()
-	runRingBufferCommonPanicTests(t, func(size int) dringbuf.RingBuffer[int] {
-		return dringbuf.NewDRingBuffer[int](size)
-	})
+	runRingBufferCommonPanicTests(t, dringbuf.NewDRingBuffer[int])
 
 	t.Run("constructor overflow panics", func(t *testing.T) {
 		t.Parallel()

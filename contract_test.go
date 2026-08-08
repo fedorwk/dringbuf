@@ -3,14 +3,21 @@ package dringbuf_test
 import (
 	"testing"
 
-	"dringbuf"
-
 	"github.com/stretchr/testify/assert"
 )
 
-type ringBufferFactory func(size int) dringbuf.RingBuffer[int]
+type ringOps[T any] interface {
+	Append(elem T)
+	Len() int
+	Cap() int
+	At(idx int) T
+	Last(n int) []T
+	Clear()
+}
 
-func runRingBufferContractTests(t *testing.T, newBuf ringBufferFactory) {
+type ringBufferFactory[B ringOps[int]] func(size int) B
+
+func runRingBufferContractTests[B ringOps[int]](t *testing.T, newBuf ringBufferFactory[B]) {
 	t.Helper()
 
 	type testCase struct {
@@ -103,7 +110,7 @@ func runRingBufferContractTests(t *testing.T, newBuf ringBufferFactory) {
 	}
 }
 
-func runRingBufferCommonPanicTests(t *testing.T, newBuf ringBufferFactory) {
+func runRingBufferCommonPanicTests[B ringOps[int]](t *testing.T, newBuf ringBufferFactory[B]) {
 	t.Helper()
 
 	t.Run("at out of bounds panics", func(t *testing.T) {
@@ -123,7 +130,7 @@ func runRingBufferCommonPanicTests(t *testing.T, newBuf ringBufferFactory) {
 	})
 }
 
-func runRingBufferClearAndReuseTests(t *testing.T, newBuf ringBufferFactory) {
+func runRingBufferClearAndReuseTests[B ringOps[int]](t *testing.T, newBuf ringBufferFactory[B]) {
 	t.Helper()
 
 	rb := newBuf(3)
