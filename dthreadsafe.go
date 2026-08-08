@@ -3,7 +3,7 @@ package dringbuf
 import "sync"
 
 type threadSafe[T any] struct {
-	mu  sync.RWMutex
+	mu  sync.Mutex
 	buf RingBuffer[T]
 }
 
@@ -24,9 +24,9 @@ type release func()
 // Returns underlying data with n last elements
 // Locks buffer for reading until `release` call
 func (b *threadSafe[T]) Borrow(n int) ([]T, release) {
-	b.mu.RLock()
+	b.mu.Lock()
 	release := func() {
-		b.mu.RUnlock()
+		b.mu.Unlock()
 	}
 	return b.buf.Last(n), release
 }
@@ -38,28 +38,28 @@ func (b *threadSafe[T]) Append(elem T) {
 }
 
 func (b *threadSafe[T]) Len() int {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	return b.buf.Len()
 }
 
 func (b *threadSafe[T]) Cap() int {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	return b.buf.Cap()
 }
 
 func (b *threadSafe[T]) At(idx int) T {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	return b.buf.At(idx)
 }
 
 // Last returns copy of underlying data
 // To take advantage of threadsafe implementation use Borrow method instead
 func (b *threadSafe[T]) Last(n int) []T {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	capacity := b.buf.Cap()
 	if n > capacity {
