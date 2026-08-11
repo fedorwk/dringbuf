@@ -5,8 +5,12 @@ import (
 	"testing"
 )
 
-// Each benchmark iteration transfers benchMessages values, so ns/op is the
-// cost of handing off that many values, not a single one.
+// Each benchmark iteration has a producer attempt to hand off benchMessages
+// values to a consumer that drains the stream/channel until it is closed, so
+// ns/op is the per-value throughput of that handoff. The drop backpressure
+// stream strategies deliver at most benchMessages (fewer if the consumer
+// cannot keep up), so their per-iteration cost is measured over the values
+// actually delivered.
 const benchMessages = 100_000
 
 func benchmarkHandoff(b *testing.B, kind bench.Kind) {
@@ -17,9 +21,8 @@ func benchmarkHandoff(b *testing.B, kind bench.Kind) {
 	}
 }
 
-func BenchmarkChanUnbuffered(b *testing.B) { benchmarkHandoff(b, bench.ChanUnbuffered) }
-func BenchmarkChanBuffered(b *testing.B)   { benchmarkHandoff(b, bench.ChanBuffered) }
-func BenchmarkSyncBasic(b *testing.B)      { benchmarkHandoff(b, bench.SyncBasic) }
-func BenchmarkSyncDring(b *testing.B)      { benchmarkHandoff(b, bench.SyncDring) }
-func BenchmarkMutexBasic(b *testing.B)     { benchmarkHandoff(b, bench.MutexBasic) }
-func BenchmarkMutexDring(b *testing.B)     { benchmarkHandoff(b, bench.MutexDring) }
+func BenchmarkChanUnbuffered(b *testing.B)   { benchmarkHandoff(b, bench.ChanUnbuffered) }
+func BenchmarkChanBuffered(b *testing.B)     { benchmarkHandoff(b, bench.ChanBuffered) }
+func BenchmarkStreamBlock(b *testing.B)      { benchmarkHandoff(b, bench.StreamBlock) }
+func BenchmarkStreamDropOldest(b *testing.B) { benchmarkHandoff(b, bench.StreamDropOldest) }
+func BenchmarkStreamDropNewest(b *testing.B) { benchmarkHandoff(b, bench.StreamDropNewest) }

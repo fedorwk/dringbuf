@@ -2,6 +2,7 @@ package dringbuf_test
 
 import (
 	"dringbuf"
+	"io"
 	"testing"
 	"time"
 
@@ -195,4 +196,78 @@ func TestStream_MultipleSubscribers(t *testing.T) {
 			assert.Equal(t, i, v)
 		}
 	}
+}
+
+func TestStream_CloseReturnsEOFAfterDrain(t *testing.T) {
+	t.Parallel()
+
+	s := dringbuf.NewStream[int]()
+	sub := s.Subscribe(3, dringbuf.BackpressureStrategyBlock)
+
+	s.Emit(1)
+	s.Emit(2)
+	sub.Close()
+
+	for i := 1; i <= 2; i++ {
+		v, err := sub.Next()
+		require.NoError(t, err)
+		assert.Equal(t, i, v)
+	}
+
+	_, err := sub.Next()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_CloseUnblocksNext(t *testing.T) {
+	t.Parallel()
+
+	s := dringbuf.NewStream[int]()
+	sub := s.Subscribe(3, dringbuf.BackpressureStrategyBlock)
+
+	got := make(chan error)
+	go func() {
+		_, err := sub.Next()
+		got <- err
+	}()
+
+	select {
+	case err := <-got:
+		t.Fatalf("Next returned before close: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	sub.Close()
+
+	select {
+	case err := <-got:
+		assert.ErrorIs(t, err, io.EOF)
+	case <-time.After(time.Second):
+		t.Fatal("Next did not unblock after close")
+	}
+}
+
+func TestStream_EmitAfterCloseIsNoop(t *testing.T) {
+	t.Parallel()
+
+	s := dringbuf.NewStream[int]()
+	sub := s.Subscribe(3, dringbuf.BackpressureStrategyDropOldest)
+
+	sub.Close()
+	s.Emit(1)
+
+	_, err := sub.Next()
+	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_CloseIdempotent(t *testing.T) {
+	t.Parallel()
+
+	s := dringbuf.NewStream[int]()
+	sub := s.Subscribe(3, dringbuf.BackpressureStrategyBlock)
+
+	sub.Close()
+	sub.Close()
+
+	_, err := sub.Next()
+	assert.ErrorIs(t, err, io.EOF)
 }

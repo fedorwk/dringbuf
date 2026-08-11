@@ -2,7 +2,6 @@ package bench
 
 import (
 	"dringbuf"
-	"sync"
 	"time"
 )
 
@@ -14,14 +13,15 @@ const (
 	ChanUnbuffered Kind = iota
 	// ChanBuffered hands values over a channel with Options.Capacity buffer.
 	ChanBuffered
-	// SyncBasic uses NewThreadSafeRingBuffer (own Mutex) plus the queue's Mutex.
-	SyncBasic
-	// SyncDring uses NewThreadSafeDRingBuffer (own Mutex) plus the queue's Mutex.
-	SyncDring
-	// MutexBasic uses NewRingBuffer guarded only by the queue's single Mutex.
-	MutexBasic
-	// MutexDring uses NewDRingBuffer guarded only by the queue's single Mutex.
-	MutexDring
+	// StreamBlock uses a Stream Subscription with Blocking backpressure, which
+	// matches channel semantics: every emitted value is received exactly once.
+	StreamBlock
+	// StreamDropOldest uses a Stream Subscription that overwrites the oldest
+	// value when the buffer is full, so the consumer receives the newest values.
+	StreamDropOldest
+	// StreamDropNewest uses a Stream Subscription that skips new values when
+	// the buffer is full, so the consumer receives the earliest values.
+	StreamDropNewest
 )
 
 // Options configures a handoff run.
@@ -31,33 +31,39 @@ type Options struct {
 }
 
 // RunHandoff transfers `messages` ints from a producer goroutine to a consumer
-// goroutine, delivering every value exactly once. It returns the elapsed time
-// and whether the consumer received the correct total
-// (sum == messages*(messages-1)/2), proving no message was lost or duplicated.
-func RunHandoff(o Options, messages int) (time.Duration, bool) {
+// goroutine. It returns the elapsed time, the number of values the consumer
+// actually received, and whether the received sequence was correct: in order,
+// strictly increasing and — for the lossless strategies — carrying the full
+// checksum. Drop strategies deliberately deliver at most Options.Capacity
+// values, so the checksum does not apply to them.
+func RunHandoff(o Options, messages int) (time.Duration, int, bool) {
 	if o.Capacity < 1 {
 		o.Capacity = 1
 	}
-	if o.Kind == ChanUnbuffered || o.Kind == ChanBuffered {
-		return runChannel(o, messages)
+	switch o.Kind {
+	case ChanUnbuffered:
+		return runChannel(o, messages, 0)
+	case ChanBuffered:
+		return runChannel(o, messages, o.Capacity)
+	default:
+		return runStream(o, messages)
 	}
-	return runQueue(o, messages)
 }
 
-func runChannel(o Options, messages int) (time.Duration, bool) {
-	capacity := 0
-	if o.Kind == ChanBuffered {
-		capacity = o.Capacity
-	}
-
+func runChannel(o Options, messages, capacity int) (time.Duration, int, bool) {
 	ch := make(chan int, capacity)
-	result := make(chan int)
+	type result struct {
+		sum int
+		n   int
+	}
+	done := make(chan result)
 	go func() {
-		var sum int
-		for range messages {
-			sum += <-ch
+		var sum, n int
+		for v := range ch {
+			sum += v
+			n++
 		}
-		result <- sum
+		done <- result{sum, n}
 	}()
 
 	start := time.Now()
@@ -65,99 +71,59 @@ func runChannel(o Options, messages int) (time.Duration, bool) {
 		ch <- i
 	}
 	close(ch)
-	sum := <-result
+	r := <-done
 
-	return time.Since(start), sum == messages*(messages-1)/2
+	return time.Since(start), r.n, r.sum == messages*(messages-1)/2
 }
 
-func runQueue(o Options, messages int) (time.Duration, bool) {
-	var storage buffer
+func runStream(o Options, messages int) (time.Duration, int, bool) {
+	var bp dringbuf.BackpressureStrategy
 	switch o.Kind {
-	case MutexBasic:
-		storage = dringbuf.NewRingBuffer[int](o.Capacity)
-	case MutexDring:
-		storage = dringbuf.NewDRingBuffer[int](o.Capacity)
-	case SyncDring:
-		storage = dringbuf.NewThreadSafeDRingBuffer[int](o.Capacity)
+	case StreamDropOldest:
+		bp = dringbuf.BackpressureStrategyDropOldest
+	case StreamDropNewest:
+		bp = dringbuf.BackpressureStrategyDropNewest
 	default:
-		storage = dringbuf.NewThreadSafeRingBuffer[int](o.Capacity)
+		bp = dringbuf.BackpressureStrategyBlock
 	}
-	q := newQueue(storage)
 
-	result := make(chan int)
+	s := dringbuf.NewStream[int]()
+	sub := s.Subscribe(o.Capacity, bp)
+
+	type result struct {
+		sum int
+		n   int
+		ok  bool
+	}
+	done := make(chan result)
 	go func() {
-		var sum int
-		for range messages {
-			sum += q.pop()
+		var sum, n int
+		prev := -1
+		ok := true
+		for {
+			v, err := sub.Next()
+			if err != nil {
+				break
+			}
+			sum += v
+			n++
+			if v <= prev {
+				ok = false
+			}
+			prev = v
 		}
-		result <- sum
+		if o.Kind == StreamBlock && sum != messages*(messages-1)/2 {
+			ok = false
+		}
+		done <- result{sum, n, ok}
 	}()
 
 	start := time.Now()
 	for i := range messages {
-		q.push(i)
+		s.Emit(i)
 	}
-	sum := <-result
+	sub.Close()
+	r := <-done
 
-	return time.Since(start), sum == messages*(messages-1)/2
-}
-
-// buffer is the subset of the ring-buffer operations the queue needs. Both the
-// raw ring buffers and the Mutex-guarded thread-safe variants satisfy it; for
-// the raw variants q.mu is the only lock protecting storage.
-type buffer interface {
-	Append(elem int)
-	Len() int
-	Cap() int
-	At(idx int) int
-}
-
-// queue wraps a ring buffer with channel-like blocking semantics: push blocks
-// while the buffer is full, pop blocks while it is empty. Every pushed value
-// is popped exactly once, in order, so the handoff is lossless.
-//
-// A ring buffer never shrinks on read, so the adapter tracks how many values
-// were pushed and popped and reads the oldest unread one via At. Reads and
-// writes are serialized by q.mu, so the buffer's window is stable during pop.
-type queue struct {
-	mu       sync.Mutex
-	notFull  *sync.Cond
-	notEmpty *sync.Cond
-	buf      buffer
-	capacity int
-	pushed   int
-	popped   int
-}
-
-func newQueue(buf buffer) *queue {
-	q := &queue{buf: buf, capacity: buf.Cap()}
-	q.notFull = sync.NewCond(&q.mu)
-	q.notEmpty = sync.NewCond(&q.mu)
-	return q
-}
-
-func (q *queue) push(v int) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	for q.pushed-q.popped == q.capacity {
-		q.notFull.Wait()
-	}
-	q.buf.Append(v)
-	q.pushed++
-	q.notEmpty.Signal()
-}
-
-func (q *queue) pop() int {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	for q.pushed == q.popped {
-		q.notEmpty.Wait()
-	}
-	unread := q.pushed - q.popped
-	v := q.buf.At(q.buf.Len() - unread)
-	q.popped++
-	q.notFull.Signal()
-	return v
+	return time.Since(start), r.n, r.ok
 }

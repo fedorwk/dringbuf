@@ -28,26 +28,27 @@ func main() {
 	variants := []variant{
 		{"chan unbuffered", bench.ChanUnbuffered},
 		{"chan buffered", bench.ChanBuffered},
-		{"sync basic", bench.SyncBasic},
-		{"sync dring", bench.SyncDring},
-		{"mutex basic", bench.MutexBasic},
-		{"mutex dring", bench.MutexDring},
+		{"stream block", bench.StreamBlock},
+		{"stream drop-oldest", bench.StreamDropOldest},
+		{"stream drop-newest", bench.StreamDropNewest},
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintf(w, "goroutine handoff: %s values, capacity=%d, %d runs (best)\n",
 		comma(int64(*messages)), *capacity, *reps)
-	fmt.Fprintln(w, "variant\t ns/op\t msg/s\t checksum")
-	fmt.Fprintln(w, "-----\t -----\t -----\t --------")
+	fmt.Fprintln(w, "variant\t ns/op\t msg/s\t delivered\t valid")
+	fmt.Fprintln(w, "-----\t -----\t -----\t ---------\t -----")
 
 	for _, v := range variants {
 		opts := bench.Options{Kind: v.kind, Capacity: *capacity}
 
 		var best time.Duration
+		received := 0
 		ok := true
 		for range *reps {
-			elapsed, runOK := bench.RunHandoff(opts, *messages)
+			elapsed, n, runOK := bench.RunHandoff(opts, *messages)
 			ok = ok && runOK
+			received = n
 			if best == 0 || elapsed < best {
 				best = elapsed
 			}
@@ -57,10 +58,12 @@ func main() {
 		if !ok {
 			status = "FAIL"
 		}
-		nsOp := float64(best.Nanoseconds()) / float64(*messages)
+		// ns/op is per delivered value, so msg/s is the true throughput of
+		// messages passed; drop strategies deliver fewer than requested.
+		nsOp := float64(best.Nanoseconds()) / float64(received)
 
-		fmt.Fprintf(w, "%s\t %.1f\t %s/s\t %s\n",
-			v.name, nsOp, comma(int64(1e9/nsOp)), status)
+		fmt.Fprintf(w, "%s\t %.1f\t %s/s\t %s\t %s\n",
+			v.name, nsOp, comma(int64(1e9/nsOp)), comma(int64(received)), status)
 	}
 	w.Flush()
 }

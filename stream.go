@@ -1,6 +1,7 @@
 package dringbuf
 
 import (
+	"io"
 	"sync"
 	"sync/atomic"
 )
@@ -37,21 +38,34 @@ type Subscription[T any] struct {
 	offset int
 
 	cancelFn func()
+	closed   bool
 
 	mu   sync.Mutex
 	cond *sync.Cond
 }
 
-func (s *Subscription[T]) cancel() {
+// Close stops the subscription: no further values are accepted and a pending
+// Next call wakes up. Buffered values can still be read; Next returns io.EOF
+// once the subscription is closed and drained. Close is idempotent.
+func (s *Subscription[T]) Close() {
 	s.mu.Lock()
-	s.cancelFn()
-	s.cond.Signal()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	s.cond.Broadcast()
 	s.mu.Unlock()
+
+	s.cancelFn()
 }
 
 func (s *Subscription[T]) emit(v T) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
 	switch s.bp {
 	case BackpressureStrategyDropNewest:
 		if s.offset >= s.buf.buf.cap { // skip value if full
@@ -74,6 +88,10 @@ func (s *Subscription[T]) Next() (T, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for s.offset <= 0 {
+		if s.closed {
+			var zero T
+			return zero, io.EOF
+		}
 		s.cond.Wait()
 	}
 	val := s.buf.At(s.buf.Len() - s.offset)
