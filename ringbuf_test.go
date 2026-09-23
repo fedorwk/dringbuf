@@ -34,7 +34,7 @@ func TestRingBuffer_LastReturnsCopy(t *testing.T) {
 	view := rb.Tail(3)
 	require.Equal(t, []int{1, 2, 3}, view)
 
-	// Basic implementation copies in Tail, so mutation must not affect the buffer.
+	// Single-array implementation copies in Tail, so mutation must not affect the buffer.
 	view[0] = 99
 
 	assert.Equal(t, []int{1, 2, 3}, rb.Tail(3))

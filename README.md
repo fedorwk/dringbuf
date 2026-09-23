@@ -3,8 +3,8 @@
 
 Generic ring buffer implementations in Go, available in two flavors:
 
-* **Basic** — a single-array circular buffer (`NewRingBuffer`, `NewThreadSafeRingBuffer`). `Tail(n)` / `Borrow(n)` return a freshly allocated `[]T`.
-* **Double-sized** — uses a **2 × capacity** underlying slice to provide a continuous `slice` view of its elements at any moment in time (`NewDRingBuffer`, `NewThreadSafeDRingBuffer`).
+* **Single-array** — a single-array circular buffer (`NewRingBuffer`, `NewThreadSafeRingBuffer`). `Tail(n)` / `Borrow(n)` return a freshly allocated `[]T`.
+* **Double-sized** — uses a **2 × capacity** underlying slice to provide a continuous `slice` view of its elements at any moment in time (`NewDoubleRingBuffer`, `NewThreadSafeDoubleRingBuffer`).
 
 The key design goal of the **double-sized** variant is **zero allocations during runtime operations**.
 The only allocation occurs once — at buffer creation.
@@ -25,7 +25,7 @@ The **double-sized** implementation avoids that entirely.
 
 By maintaining an underlying slice of **2 × capacity**, every element is mirrored at an offset equal to the buffer size. This guarantees that the active window is always represented as a **single contiguous slice** in memory.
 
-As a result, for the double-sized variant (`NewDRingBuffer` / `NewThreadSafeDRingBuffer`):
+As a result, for the double-sized variant (`NewDoubleRingBuffer` / `NewThreadSafeDoubleRingBuffer`):
 
 * `Tail(n)` returns a `[]T` without allocation (base version, `RingBuffer`)
 * `Borrow(n)` returns a `[]T` and a `Release` function without allocation (thread-safe version, `ThreadSafeRingBuffer`)
@@ -33,12 +33,12 @@ As a result, for the double-sized variant (`NewDRingBuffer` / `NewThreadSafeDRin
 * No wrap-around handling is required by the consumer
 * The buffer is allocation-free after initialization
 
-Constructors return concrete types (`*RingBuffer[T]`, `*DRingBuffer[T]`, `*ThreadSafeRingBuffer[B, T]`),
+Constructors return concrete types (`*RingBuffer[T]`, `*DoubleRingBuffer[T]`, `*ThreadSafeRingBuffer[B, T]`),
 so method calls are statically dispatched and can be inlined. `NewThreadSafeRingBuffer` and
-`NewThreadSafeDRingBuffer` both return the same `ThreadSafeRingBuffer` wrapper parameterized by
+`NewThreadSafeDoubleRingBuffer` both return the same `ThreadSafeRingBuffer` wrapper parameterized by
 the concrete underlying buffer type.
 
-The **basic** variant (`NewRingBuffer` / `NewThreadSafeRingBuffer`) stores each element once in a single slice of capacity `N`. It uses half the memory of the double-sized variant, but `Tail(n)` and `Borrow(n)` always allocate a new slice and copy.
+The **single-array** variant (`NewRingBuffer` / `NewThreadSafeRingBuffer`) stores each element once in a single slice of capacity `N`. It uses half the memory of the double-sized variant, but `Tail(n)` and `Borrow(n)` always allocate a new slice and copy.
 
 ## API
 
@@ -55,7 +55,7 @@ Elements are ordered oldest → newest. `At(0)` / `Get(0)` address the oldest el
 | `Clear()` | Remove all elements. |
 | `Borrow(n) ([]T, Release)` | Thread-safe read view; call `Release` when done. |
 
-Ownership: `Tail`/`Last` copy for `RingBuffer` and `ThreadSafeRingBuffer`; `Tail` and `Borrow` return a view into internal storage for `DRingBuffer` (do not modify, and do not retain past the next `Append`/`Clear`).
+Ownership: `Tail`/`Last` copy for `RingBuffer` and `ThreadSafeRingBuffer`; `Tail` and `Borrow` return a view into internal storage for `DoubleRingBuffer` (do not modify, and do not retain past the next `Append`/`Clear`).
 
 ## Core Idea
 

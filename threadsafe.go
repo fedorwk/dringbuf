@@ -31,15 +31,15 @@ func NewThreadSafeRingBuffer[T any](size int) *ThreadSafeRingBuffer[*RingBuffer[
 	}
 }
 
-// NewThreadSafeDRingBuffer creates a thread-safe wrapper around a DRingBuffer.
-func NewThreadSafeDRingBuffer[T any](size int) *ThreadSafeRingBuffer[*DRingBuffer[T], T] {
-	return &ThreadSafeRingBuffer[*DRingBuffer[T], T]{
-		buf: NewDRingBuffer[T](size),
+// NewThreadSafeDoubleRingBuffer creates a thread-safe wrapper around a DoubleRingBuffer.
+func NewThreadSafeDoubleRingBuffer[T any](size int) *ThreadSafeRingBuffer[*DoubleRingBuffer[T], T] {
+	return &ThreadSafeRingBuffer[*DoubleRingBuffer[T], T]{
+		buf: NewDoubleRingBuffer[T](size),
 	}
 }
 
 // Borrow returns the last n elements and locks the buffer until release is
-// called. For a RingBuffer the returned slice is a copy; for a DRingBuffer it
+// called. For a RingBuffer the returned slice is a copy; for a DoubleRingBuffer it
 // aliases internal storage and must be treated as read-only and released before
 // the next Append. The buffer stays locked for writing until release.
 func (b *ThreadSafeRingBuffer[B, T]) Borrow(n int) ([]T, Release) {

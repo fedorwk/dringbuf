@@ -1,17 +1,17 @@
 package dringbuf
 
-// DRingBuffer is a double-sized circular buffer that keeps its logical window
+// DoubleRingBuffer is a double-sized circular buffer that keeps its logical window
 // contiguous in memory.
-type DRingBuffer[T any] struct {
+type DoubleRingBuffer[T any] struct {
 	buf  []T
 	size int
 	len  int
 	cur  int
 }
 
-// NewDRingBuffer creates a DRingBuffer with the given capacity. It panics if
+// NewDoubleRingBuffer creates a DoubleRingBuffer with the given capacity. It panics if
 // size is not positive or if 2*size overflows int.
-func NewDRingBuffer[T any](size int) *DRingBuffer[T] {
+func NewDoubleRingBuffer[T any](size int) *DoubleRingBuffer[T] {
 	if size <= 0 {
 		panic("dringbuf: size must be positive")
 	}
@@ -19,7 +19,7 @@ func NewDRingBuffer[T any](size int) *DRingBuffer[T] {
 	if doubleSize < size { // integer overflow
 		panic("struct size overflow. Max size of buffer is MaxInt/2 for target architecture")
 	}
-	return &DRingBuffer[T]{
+	return &DoubleRingBuffer[T]{
 		buf:  make([]T, doubleSize),
 		size: size,
 		len:  0,
@@ -28,7 +28,7 @@ func NewDRingBuffer[T any](size int) *DRingBuffer[T] {
 }
 
 // Append adds a new element to the buffer. If the buffer is already full, the oldest element is overwritten.
-func (b *DRingBuffer[T]) Append(elem T) {
+func (b *DoubleRingBuffer[T]) Append(elem T) {
 	b.buf[b.cur] = elem
 	b.buf[b.cur+b.size] = elem
 	b.cur = (b.cur + 1) % b.size
@@ -39,19 +39,19 @@ func (b *DRingBuffer[T]) Append(elem T) {
 }
 
 // Len returns the current number of elements stored in the buffer.
-func (b *DRingBuffer[T]) Len() int {
+func (b *DoubleRingBuffer[T]) Len() int {
 	return b.len
 }
 
 // Cap returns the maximum capacity of the buffer (the total number of elements it can hold).
-func (b *DRingBuffer[T]) Cap() int {
+func (b *DoubleRingBuffer[T]) Cap() int {
 	return b.size
 }
 
 // At returns the element at idx relative to the logical start of the buffer,
 // where At(0) is the oldest element and At(Len()-1) is the most recent. It
 // panics if idx is negative or not less than Len.
-func (b *DRingBuffer[T]) At(idx int) T {
+func (b *DoubleRingBuffer[T]) At(idx int) T {
 	if idx < 0 || idx >= b.len {
 		panic("dringbuf: index out of range")
 	}
@@ -60,7 +60,7 @@ func (b *DRingBuffer[T]) At(idx int) T {
 
 // Get returns the element at idx and true, or the zero value and false if idx
 // is negative or not less than Len. Unlike At it does not panic.
-func (b *DRingBuffer[T]) Get(idx int) (T, bool) {
+func (b *DoubleRingBuffer[T]) Get(idx int) (T, bool) {
 	if idx < 0 || idx >= b.len {
 		var zero T
 		return zero, false
@@ -70,7 +70,7 @@ func (b *DRingBuffer[T]) Get(idx int) (T, bool) {
 
 // Last returns the most recently appended element and true, or the zero value
 // and false when the buffer is empty.
-func (b *DRingBuffer[T]) Last() (T, bool) {
+func (b *DoubleRingBuffer[T]) Last() (T, bool) {
 	return b.Get(b.len - 1)
 }
 
@@ -79,7 +79,7 @@ func (b *DRingBuffer[T]) Last() (T, bool) {
 // internal storage and aliases the live window; do not modify it and do not
 // retain it after the next Append or Clear. It panics if n is negative or
 // greater than Cap.
-func (b *DRingBuffer[T]) Tail(n int) []T {
+func (b *DoubleRingBuffer[T]) Tail(n int) []T {
 	if n < 0 || n > b.size {
 		panic("dringbuf: n out of buffer size")
 	}
@@ -93,7 +93,7 @@ func (b *DRingBuffer[T]) Tail(n int) []T {
 }
 
 // Clear removes all elements from the buffer and resets it to an empty state.
-func (b *DRingBuffer[T]) Clear() {
+func (b *DoubleRingBuffer[T]) Clear() {
 	var zero T
 	for i := range b.buf {
 		b.buf[i] = zero
@@ -102,6 +102,6 @@ func (b *DRingBuffer[T]) Clear() {
 	b.len = 0
 }
 
-func (b DRingBuffer[T]) start() int {
+func (b DoubleRingBuffer[T]) start() int {
 	return b.cur + b.size - b.len
 }

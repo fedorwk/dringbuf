@@ -8,19 +8,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDRingBuffer_Contract(t *testing.T) {
+func TestDoubleRingBuffer_Contract(t *testing.T) {
 	t.Parallel()
-	runRingBufferContractTests(t, dringbuf.NewDRingBuffer[int])
+	runRingBufferContractTests(t, dringbuf.NewDoubleRingBuffer[int])
 }
 
-func TestDRingBuffer_ClearAndReuse(t *testing.T) {
+func TestDoubleRingBuffer_ClearAndReuse(t *testing.T) {
 	t.Parallel()
-	runRingBufferClearAndReuseTests(t, dringbuf.NewDRingBuffer[int])
+	runRingBufferClearAndReuseTests(t, dringbuf.NewDoubleRingBuffer[int])
 }
 
-func TestDRingBuffer_Panics(t *testing.T) {
+func TestDoubleRingBuffer_Panics(t *testing.T) {
 	t.Parallel()
-	runRingBufferCommonPanicTests(t, dringbuf.NewDRingBuffer[int])
+	runRingBufferCommonPanicTests(t, dringbuf.NewDoubleRingBuffer[int])
 
 	t.Run("constructor overflow panics", func(t *testing.T) {
 		t.Parallel()
@@ -28,14 +28,14 @@ func TestDRingBuffer_Panics(t *testing.T) {
 		maxInt := int(^uint(0) >> 1)
 		overflowSize := maxInt/2 + 1
 
-		assert.Panics(t, func() { dringbuf.NewDRingBuffer[int](overflowSize) })
+		assert.Panics(t, func() { dringbuf.NewDoubleRingBuffer[int](overflowSize) })
 	})
 }
 
-func TestDRingBuffer_LastAliasingBehavior(t *testing.T) {
+func TestDoubleRingBuffer_LastAliasingBehavior(t *testing.T) {
 	t.Parallel()
 
-	rb := dringbuf.NewDRingBuffer[int](3)
+	rb := dringbuf.NewDoubleRingBuffer[int](3)
 	rb.Append(1)
 	rb.Append(2)
 	rb.Append(3)
@@ -50,10 +50,10 @@ func TestDRingBuffer_LastAliasingBehavior(t *testing.T) {
 	assert.Equal(t, []int{99, 2, 3}, rb.Tail(3))
 }
 
-func TestDRingBuffer_Last(t *testing.T) {
+func TestDoubleRingBuffer_Last(t *testing.T) {
 	t.Parallel()
 
-	rb := dringbuf.NewDRingBuffer[int](3)
+	rb := dringbuf.NewDoubleRingBuffer[int](3)
 
 	_, ok := rb.Last()
 	assert.False(t, ok)
@@ -72,11 +72,11 @@ func TestDRingBuffer_Last(t *testing.T) {
 	assert.Equal(t, 4, v)
 }
 
-func TestDRingBuffer_LargeCapacitySmoke(t *testing.T) {
+func TestDoubleRingBuffer_LargeCapacitySmoke(t *testing.T) {
 	t.Parallel()
 
 	const size = 100_000
-	rb := dringbuf.NewDRingBuffer[int](size)
+	rb := dringbuf.NewDoubleRingBuffer[int](size)
 
 	assert.Equal(t, 0, rb.Len())
 	assert.Equal(t, size, rb.Cap())

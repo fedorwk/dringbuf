@@ -84,7 +84,7 @@ func TestThreadSafeRingBuffer_BorrowReturnsCopy(t *testing.T) {
 	view[0] = 42
 	release()
 
-	// Basic sync Borrow copies, so mutation is not visible.
+	// Single-array sync Borrow copies, so mutation is not visible.
 	assert.Equal(t, 1, rb.At(0))
 	assert.Equal(t, []int{1, 2, 3}, rb.Tail(3))
 }
@@ -203,28 +203,28 @@ func TestThreadSafeRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 	}
 }
 
-func TestThreadSafeDRingBuffer_Contract(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_Contract(t *testing.T) {
 	t.Parallel()
 
-	runRingBufferContractTests(t, dringbuf.NewThreadSafeDRingBuffer[int])
+	runRingBufferContractTests(t, dringbuf.NewThreadSafeDoubleRingBuffer[int])
 }
 
-func TestThreadSafeDRingBuffer_ClearAndReuse(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_ClearAndReuse(t *testing.T) {
 	t.Parallel()
 
-	runRingBufferClearAndReuseTests(t, dringbuf.NewThreadSafeDRingBuffer[int])
+	runRingBufferClearAndReuseTests(t, dringbuf.NewThreadSafeDoubleRingBuffer[int])
 }
 
-func TestThreadSafeDRingBuffer_Panics(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_Panics(t *testing.T) {
 	t.Parallel()
 
-	runRingBufferCommonPanicTests(t, dringbuf.NewThreadSafeDRingBuffer[int])
+	runRingBufferCommonPanicTests(t, dringbuf.NewThreadSafeDoubleRingBuffer[int])
 }
 
-func TestThreadSafeDRingBuffer_TailReturnsCopy(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_TailReturnsCopy(t *testing.T) {
 	t.Parallel()
 
-	rb := dringbuf.NewThreadSafeDRingBuffer[int](3)
+	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](3)
 	rb.Append(1)
 	rb.Append(2)
 	rb.Append(3)
@@ -238,10 +238,10 @@ func TestThreadSafeDRingBuffer_TailReturnsCopy(t *testing.T) {
 	assert.Equal(t, 1, rb.At(0))
 }
 
-func TestThreadSafeDRingBuffer_LastAndGet(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_LastAndGet(t *testing.T) {
 	t.Parallel()
 
-	rb := dringbuf.NewThreadSafeDRingBuffer[int](3)
+	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](3)
 
 	_, ok := rb.Last()
 	assert.False(t, ok)
@@ -263,10 +263,10 @@ func TestThreadSafeDRingBuffer_LastAndGet(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestThreadSafeDRingBuffer_BorrowReturnsAliasedView(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_BorrowReturnsAliasedView(t *testing.T) {
 	t.Parallel()
 
-	rb := dringbuf.NewThreadSafeDRingBuffer[int](3)
+	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](3)
 	rb.Append(1)
 	rb.Append(2)
 	rb.Append(3)
@@ -282,10 +282,10 @@ func TestThreadSafeDRingBuffer_BorrowReturnsAliasedView(t *testing.T) {
 	assert.Equal(t, []int{42, 2, 3}, rb.Tail(3))
 }
 
-func TestThreadSafeDRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
 	t.Parallel()
 
-	rb := dringbuf.NewThreadSafeDRingBuffer[int](3)
+	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](3)
 	rb.Append(1)
 	rb.Append(2)
 	rb.Append(3)
@@ -325,7 +325,7 @@ func TestThreadSafeDRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
 	assert.Equal(t, []int{2, 3, 4}, rb.Tail(3))
 }
 
-func TestThreadSafeDRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 	const (
 		capacity      = 32
 		writers       = 2
@@ -340,7 +340,7 @@ func TestThreadSafeDRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 		timeout = 12 * time.Second
 	}
 
-	rb := dringbuf.NewThreadSafeDRingBuffer[int](capacity)
+	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](capacity)
 
 	var wg sync.WaitGroup
 	wg.Add(writers + readers)
