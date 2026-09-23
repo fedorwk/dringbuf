@@ -28,7 +28,7 @@ func TestThreadSafeRingBuffer_Panics(t *testing.T) {
 	runRingBufferCommonPanicTests(t, dringbuf.NewThreadSafeRingBuffer[int])
 }
 
-func TestThreadSafeRingBuffer_LastReturnsCopy(t *testing.T) {
+func TestThreadSafeRingBuffer_TailReturnsCopy(t *testing.T) {
 	t.Parallel()
 
 	rb := dringbuf.NewThreadSafeRingBuffer[int](3)
@@ -36,13 +36,38 @@ func TestThreadSafeRingBuffer_LastReturnsCopy(t *testing.T) {
 	rb.Append(2)
 	rb.Append(3)
 
-	last := rb.Last(3)
+	last := rb.Tail(3)
 	require.Equal(t, []int{1, 2, 3}, last)
 
 	last[0] = 99
 
-	assert.Equal(t, []int{1, 2, 3}, rb.Last(3))
+	assert.Equal(t, []int{1, 2, 3}, rb.Tail(3))
 	assert.Equal(t, 1, rb.At(0))
+}
+
+func TestThreadSafeRingBuffer_LastAndGet(t *testing.T) {
+	t.Parallel()
+
+	rb := dringbuf.NewThreadSafeRingBuffer[int](3)
+
+	_, ok := rb.Last()
+	assert.False(t, ok)
+	_, ok = rb.Get(0)
+	assert.False(t, ok)
+
+	rb.Append(1)
+	rb.Append(2)
+
+	v, ok := rb.Last()
+	require.True(t, ok)
+	assert.Equal(t, 2, v)
+
+	v, ok = rb.Get(0)
+	require.True(t, ok)
+	assert.Equal(t, 1, v)
+
+	_, ok = rb.Get(2)
+	assert.False(t, ok)
 }
 
 func TestThreadSafeRingBuffer_BorrowReturnsCopy(t *testing.T) {
@@ -61,7 +86,7 @@ func TestThreadSafeRingBuffer_BorrowReturnsCopy(t *testing.T) {
 
 	// Basic sync Borrow copies, so mutation is not visible.
 	assert.Equal(t, 1, rb.At(0))
-	assert.Equal(t, []int{1, 2, 3}, rb.Last(3))
+	assert.Equal(t, []int{1, 2, 3}, rb.Tail(3))
 }
 
 func TestThreadSafeRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
@@ -104,7 +129,7 @@ func TestThreadSafeRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
 		t.Fatal("writer did not complete after borrow release")
 	}
 
-	assert.Equal(t, []int{2, 3, 4}, rb.Last(3))
+	assert.Equal(t, []int{2, 3, 4}, rb.Tail(3))
 }
 
 func TestThreadSafeRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
@@ -147,7 +172,7 @@ func TestThreadSafeRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 			for range perReaderOps {
 				_ = rb.Len()
 				_ = rb.Cap()
-				_ = rb.Last(0)
+				_ = rb.Tail(0)
 			}
 		}()
 	}
@@ -169,7 +194,7 @@ func TestThreadSafeRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 	assert.Equal(t, capacity, rb.Cap())
 	assert.LessOrEqual(t, rb.Len(), capacity)
 
-	last := rb.Last(rb.Len())
+	last := rb.Tail(rb.Len())
 	assert.Len(t, last, rb.Len())
 
 	for _, v := range last {
@@ -196,7 +221,7 @@ func TestThreadSafeDRingBuffer_Panics(t *testing.T) {
 	runRingBufferCommonPanicTests(t, dringbuf.NewThreadSafeDRingBuffer[int])
 }
 
-func TestThreadSafeDRingBuffer_LastReturnsCopy(t *testing.T) {
+func TestThreadSafeDRingBuffer_TailReturnsCopy(t *testing.T) {
 	t.Parallel()
 
 	rb := dringbuf.NewThreadSafeDRingBuffer[int](3)
@@ -204,13 +229,38 @@ func TestThreadSafeDRingBuffer_LastReturnsCopy(t *testing.T) {
 	rb.Append(2)
 	rb.Append(3)
 
-	last := rb.Last(3)
+	last := rb.Tail(3)
 	require.Equal(t, []int{1, 2, 3}, last)
 
 	last[0] = 99
 
-	assert.Equal(t, []int{1, 2, 3}, rb.Last(3))
+	assert.Equal(t, []int{1, 2, 3}, rb.Tail(3))
 	assert.Equal(t, 1, rb.At(0))
+}
+
+func TestThreadSafeDRingBuffer_LastAndGet(t *testing.T) {
+	t.Parallel()
+
+	rb := dringbuf.NewThreadSafeDRingBuffer[int](3)
+
+	_, ok := rb.Last()
+	assert.False(t, ok)
+	_, ok = rb.Get(0)
+	assert.False(t, ok)
+
+	rb.Append(1)
+	rb.Append(2)
+
+	v, ok := rb.Last()
+	require.True(t, ok)
+	assert.Equal(t, 2, v)
+
+	v, ok = rb.Get(0)
+	require.True(t, ok)
+	assert.Equal(t, 1, v)
+
+	_, ok = rb.Get(2)
+	assert.False(t, ok)
 }
 
 func TestThreadSafeDRingBuffer_BorrowReturnsAliasedView(t *testing.T) {
@@ -229,7 +279,7 @@ func TestThreadSafeDRingBuffer_BorrowReturnsAliasedView(t *testing.T) {
 
 	// Double-sized Borrow exposes internal memory, so mutation is visible.
 	assert.Equal(t, 42, rb.At(0))
-	assert.Equal(t, []int{42, 2, 3}, rb.Last(3))
+	assert.Equal(t, []int{42, 2, 3}, rb.Tail(3))
 }
 
 func TestThreadSafeDRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
@@ -272,7 +322,7 @@ func TestThreadSafeDRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
 		t.Fatal("writer did not complete after borrow release")
 	}
 
-	assert.Equal(t, []int{2, 3, 4}, rb.Last(3))
+	assert.Equal(t, []int{2, 3, 4}, rb.Tail(3))
 }
 
 func TestThreadSafeDRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
@@ -315,7 +365,7 @@ func TestThreadSafeDRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 			for range perReaderOps {
 				_ = rb.Len()
 				_ = rb.Cap()
-				_ = rb.Last(0)
+				_ = rb.Tail(0)
 			}
 		}()
 	}
@@ -337,7 +387,7 @@ func TestThreadSafeDRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 	assert.Equal(t, capacity, rb.Cap())
 	assert.LessOrEqual(t, rb.Len(), capacity)
 
-	last := rb.Last(rb.Len())
+	last := rb.Tail(rb.Len())
 	assert.Len(t, last, rb.Len())
 
 	for _, v := range last {

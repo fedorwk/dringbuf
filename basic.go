@@ -8,8 +8,12 @@ type RingBuffer[T any] struct {
 	cap  int
 }
 
-// NewRingBuffer creates a RingBuffer with the given capacity.
+// NewRingBuffer creates a RingBuffer with the given capacity. It panics if size
+// is not positive.
 func NewRingBuffer[T any](size int) *RingBuffer[T] {
+	if size <= 0 {
+		panic("dringbuf: size must be positive")
+	}
 	return &RingBuffer[T]{
 		buf: make([]T, size),
 		cap: size,
@@ -38,18 +42,39 @@ func (b *RingBuffer[T]) Cap() int {
 	return b.cap
 }
 
-// At retrieves the element at the specified index relative to the logical start of the buffer.
+// At returns the element at idx relative to the logical start of the buffer,
+// where At(0) is the oldest element and At(Len()-1) is the most recent. It
+// panics if idx is negative or not less than Len.
 func (b *RingBuffer[T]) At(idx int) T {
-	if idx >= b.cap {
-		panic("idx out of buffer size")
+	if idx < 0 || idx >= b.len {
+		panic("dringbuf: index out of range")
 	}
 	return b.buf[(b.head+idx)%b.cap]
 }
 
-// Last returns the last n most recently appended elements in order.
-func (b *RingBuffer[T]) Last(n int) []T {
-	if n > b.cap {
-		panic("n out of buffer size")
+// Get returns the element at idx and true, or the zero value and false if idx
+// is negative or not less than Len. Unlike At it does not panic.
+func (b *RingBuffer[T]) Get(idx int) (T, bool) {
+	if idx < 0 || idx >= b.len {
+		var zero T
+		return zero, false
+	}
+	return b.buf[(b.head+idx)%b.cap], true
+}
+
+// Last returns the most recently appended element and true, or the zero value
+// and false when the buffer is empty.
+func (b *RingBuffer[T]) Last() (T, bool) {
+	return b.Get(b.len - 1)
+}
+
+// Tail returns the last n most recently appended elements in oldest-to-newest
+// order. If n exceeds Len it is clamped to Len. The result is a freshly
+// allocated copy and may be modified freely. It panics if n is negative or
+// greater than Cap.
+func (b *RingBuffer[T]) Tail(n int) []T {
+	if n < 0 || n > b.cap {
+		panic("dringbuf: n out of buffer size")
 	}
 	if n > b.len {
 		n = b.len

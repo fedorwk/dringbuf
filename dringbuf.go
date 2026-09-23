@@ -9,8 +9,12 @@ type DRingBuffer[T any] struct {
 	cur  int
 }
 
-// NewDRingBuffer creates a DRingBuffer with the given capacity.
+// NewDRingBuffer creates a DRingBuffer with the given capacity. It panics if
+// size is not positive or if 2*size overflows int.
 func NewDRingBuffer[T any](size int) *DRingBuffer[T] {
+	if size <= 0 {
+		panic("dringbuf: size must be positive")
+	}
 	doubleSize := size * 2
 	if doubleSize < size { // integer overflow
 		panic("struct size overflow. Max size of buffer is MaxInt/2 for target architecture")
@@ -44,20 +48,40 @@ func (b *DRingBuffer[T]) Cap() int {
 	return b.size
 }
 
-// At retrieves the element at the specified index relative to the logical start of the buffer.
+// At returns the element at idx relative to the logical start of the buffer,
+// where At(0) is the oldest element and At(Len()-1) is the most recent. It
+// panics if idx is negative or not less than Len.
 func (b *DRingBuffer[T]) At(idx int) T {
-	if idx >= b.size {
-		panic("idx out of buffer size")
+	if idx < 0 || idx >= b.len {
+		panic("dringbuf: index out of range")
 	}
 	return b.buf[b.start()+idx]
-
 }
 
-// Last returns the last n most recently appended elements in order. The result
-// is a view into internal storage; do not modify it.
-func (b *DRingBuffer[T]) Last(n int) []T {
-	if n > b.size {
-		panic("n out of buffer size")
+// Get returns the element at idx and true, or the zero value and false if idx
+// is negative or not less than Len. Unlike At it does not panic.
+func (b *DRingBuffer[T]) Get(idx int) (T, bool) {
+	if idx < 0 || idx >= b.len {
+		var zero T
+		return zero, false
+	}
+	return b.buf[b.start()+idx], true
+}
+
+// Last returns the most recently appended element and true, or the zero value
+// and false when the buffer is empty.
+func (b *DRingBuffer[T]) Last() (T, bool) {
+	return b.Get(b.len - 1)
+}
+
+// Tail returns the last n most recently appended elements in oldest-to-newest
+// order. If n exceeds Len it is clamped to Len. The result is a view into
+// internal storage and aliases the live window; do not modify it and do not
+// retain it after the next Append or Clear. It panics if n is negative or
+// greater than Cap.
+func (b *DRingBuffer[T]) Tail(n int) []T {
+	if n < 0 || n > b.size {
+		panic("dringbuf: n out of buffer size")
 	}
 	if n > b.len {
 		return b.buf[0:b.len]

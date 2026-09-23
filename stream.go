@@ -27,15 +27,29 @@ func NewStream[T any]() *Stream[T] {
 }
 
 func (hs *Stream[T]) Emit(val T) {
+	// Snapshot subscribers under the lock: Close/cancel mutates hs.subs, so
+	// iterating the map directly would race with it. A subscriber closed after
+	// the snapshot simply drops the value in emit.
+	hs.mu.Lock()
+	subs := make([]*Subscription[T], 0, len(hs.subs))
 	for _, s := range hs.subs {
+		subs = append(subs, s)
+	}
+	hs.mu.Unlock()
+
+	for _, s := range subs {
 		s.emit(val)
 	}
 }
 
 type Subscription[T any] struct {
-	buf    *ThreadSafeRingBuffer[*RingBuffer[T], T]
+	buf    *RingBuffer[T]
 	bp     BackpressureStrategy
 	offset int
+
+	// waiters counts goroutines parked on cond, guarded by mu. emit and Next
+	// use it to skip cond.Signal when no one is waiting.
+	waiters int
 
 	cancelFn func()
 	closed   bool
@@ -68,20 +82,24 @@ func (s *Subscription[T]) emit(v T) {
 	}
 	switch s.bp {
 	case BackpressureStrategyDropNewest:
-		if s.offset >= s.buf.buf.cap { // skip value if full
+		if s.offset >= s.buf.cap { // skip value if full
 			return
 		}
 	case BackpressureStrategyBlock:
-		for s.offset >= s.buf.buf.cap { // wait for reader to free space
+		for s.offset >= s.buf.cap { // wait for reader to free space
+			s.waiters++
 			s.cond.Wait()
+			s.waiters--
 		}
 	case BackpressureStrategyDropOldest:
 	}
 	s.buf.Append(v)
-	if s.offset < s.buf.buf.cap {
+	if s.offset < s.buf.cap {
 		s.offset++
 	}
-	s.cond.Signal()
+	if s.waiters > 0 {
+		s.cond.Signal()
+	}
 }
 
 func (s *Subscription[T]) Next() (T, error) {
@@ -92,11 +110,15 @@ func (s *Subscription[T]) Next() (T, error) {
 			var zero T
 			return zero, io.EOF
 		}
+		s.waiters++
 		s.cond.Wait()
+		s.waiters--
 	}
 	val := s.buf.At(s.buf.Len() - s.offset)
 	s.offset--
-	s.cond.Signal()
+	if s.waiters > 0 {
+		s.cond.Signal()
+	}
 	return val, nil
 }
 
@@ -108,7 +130,7 @@ func (hs *Stream[T]) Subscribe(bufsize int, bp BackpressureStrategy) *Subscripti
 		hs.mu.Unlock()
 	}
 	sub := &Subscription[T]{
-		buf:      NewThreadSafeRingBuffer[T](bufsize),
+		buf:      NewRingBuffer[T](bufsize),
 		bp:       bp,
 		offset:   0,
 		cancelFn: cancel,

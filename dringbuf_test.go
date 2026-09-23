@@ -40,14 +40,36 @@ func TestDRingBuffer_LastAliasingBehavior(t *testing.T) {
 	rb.Append(2)
 	rb.Append(3)
 
-	view := rb.Last(3)
+	view := rb.Tail(3)
 	require.Equal(t, []int{1, 2, 3}, view)
 
 	// Double-sized implementation returns a view to internal storage.
 	view[0] = 99
 
 	assert.Equal(t, 99, rb.At(0))
-	assert.Equal(t, []int{99, 2, 3}, rb.Last(3))
+	assert.Equal(t, []int{99, 2, 3}, rb.Tail(3))
+}
+
+func TestDRingBuffer_Last(t *testing.T) {
+	t.Parallel()
+
+	rb := dringbuf.NewDRingBuffer[int](3)
+
+	_, ok := rb.Last()
+	assert.False(t, ok)
+
+	rb.Append(1)
+	v, ok := rb.Last()
+	require.True(t, ok)
+	assert.Equal(t, 1, v)
+
+	rb.Append(2)
+	rb.Append(3)
+	rb.Append(4)
+
+	v, ok = rb.Last()
+	require.True(t, ok)
+	assert.Equal(t, 4, v)
 }
 
 func TestDRingBuffer_LargeCapacitySmoke(t *testing.T) {
@@ -64,5 +86,5 @@ func TestDRingBuffer_LargeCapacitySmoke(t *testing.T) {
 	}
 
 	assert.Equal(t, size, rb.Len())
-	assert.Equal(t, []int{size - 3, size - 2, size - 1}, rb.Last(3))
+	assert.Equal(t, []int{size - 3, size - 2, size - 1}, rb.Tail(3))
 }

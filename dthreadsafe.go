@@ -12,7 +12,9 @@ type innerOps[T any] interface {
 	Len() int
 	Cap() int
 	At(idx int) T
-	Last(n int) []T
+	Get(idx int) (T, bool)
+	Last() (T, bool)
+	Tail(n int) []T
 	Clear()
 }
 
@@ -36,14 +38,16 @@ func NewThreadSafeDRingBuffer[T any](size int) *ThreadSafeRingBuffer[*DRingBuffe
 	}
 }
 
-// Borrow returns underlying data with n last elements.
-// Locks buffer for reading until `release` call.
+// Borrow returns the last n elements and locks the buffer until release is
+// called. For a RingBuffer the returned slice is a copy; for a DRingBuffer it
+// aliases internal storage and must be treated as read-only and released before
+// the next Append. The buffer stays locked for writing until release.
 func (b *ThreadSafeRingBuffer[B, T]) Borrow(n int) ([]T, Release) {
 	b.mu.Lock()
 	release := func() {
 		b.mu.Unlock()
 	}
-	return b.buf.Last(n), release
+	return b.buf.Tail(n), release
 }
 
 // Append adds a new element to the buffer. If the buffer is already full, the oldest element is overwritten.
@@ -67,22 +71,40 @@ func (b *ThreadSafeRingBuffer[B, T]) Cap() int {
 	return b.buf.Cap()
 }
 
-// At retrieves the element at the specified index relative to the logical start of the buffer.
+// At returns the element at idx relative to the logical start of the buffer,
+// where At(0) is the oldest element and At(Len()-1) is the most recent. It
+// panics if idx is negative or not less than Len.
 func (b *ThreadSafeRingBuffer[B, T]) At(idx int) T {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.At(idx)
 }
 
-// Last returns copy of underlying data
-// To take advantage of threadsafe implementation use Borrow method instead
-func (b *ThreadSafeRingBuffer[B, T]) Last(n int) []T {
+// Get returns the element at idx and true, or the zero value and false if idx
+// is out of range. The bounds check and read happen under a single lock.
+func (b *ThreadSafeRingBuffer[B, T]) Get(idx int) (T, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Get(idx)
+}
+
+// Last returns the most recently appended element and true, or the zero value
+// and false when the buffer is empty.
+func (b *ThreadSafeRingBuffer[B, T]) Last() (T, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Last()
+}
+
+// Tail returns a copy of the last n elements. To avoid the copy and read the
+// underlying data in place, use Borrow instead.
+func (b *ThreadSafeRingBuffer[B, T]) Tail(n int) []T {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	capacity := b.buf.Cap()
-	if n > capacity {
-		panic("n out of buffer size")
+	if n < 0 || n > capacity {
+		panic("dringbuf: n out of buffer size")
 	}
 
 	length := b.buf.Len()
@@ -91,7 +113,7 @@ func (b *ThreadSafeRingBuffer[B, T]) Last(n int) []T {
 	}
 
 	res := make([]T, n)
-	copy(res, b.buf.Last(n))
+	copy(res, b.buf.Tail(n))
 	return res
 }
 

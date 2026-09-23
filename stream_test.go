@@ -3,6 +3,7 @@ package dringbuf_test
 import (
 	"dringbuf"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -257,6 +258,37 @@ func TestStream_EmitAfterCloseIsNoop(t *testing.T) {
 
 	_, err := sub.Next()
 	assert.ErrorIs(t, err, io.EOF)
+}
+
+func TestStream_ConcurrentEmitAndClose(t *testing.T) {
+	t.Parallel()
+
+	s := dringbuf.NewStream[int]()
+
+	const subscribers = 8
+	subs := make([]*dringbuf.Subscription[int], 0, subscribers)
+	for range subscribers {
+		subs = append(subs, s.Subscribe(4, dringbuf.BackpressureStrategyDropNewest))
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for i := range 10_000 {
+			s.Emit(i)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		for _, sub := range subs {
+			sub.Close()
+		}
+	}()
+
+	wg.Wait()
 }
 
 func TestStream_CloseIdempotent(t *testing.T) {
