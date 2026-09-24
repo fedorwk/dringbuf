@@ -1,11 +1,11 @@
 package dringbuf_test
 
 import (
-	"dringbuf"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/fedorwk/dringbuf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

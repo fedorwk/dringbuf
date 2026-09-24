@@ -1,8 +1,9 @@
 package bench
 
 import (
-	"dringbuf"
 	"time"
+
+	"github.com/fedorwk/dringbuf"
 )
 
 // Kind identifies a goroutine-handoff implementation.

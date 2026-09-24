@@ -1,9 +1,10 @@
 package dringbuf_test
 
 import (
-	"dringbuf/internal/bench"
 	"testing"
 	"time"
+
+	"github.com/fedorwk/dringbuf/internal/bench"
 )
 
 // Each benchmark iteration has a producer attempt to hand off benchMessages

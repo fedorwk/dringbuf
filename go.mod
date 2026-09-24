@@ -1,4 +1,4 @@
-module dringbuf
+module github.com/fedorwk/dringbuf
 
 go 1.25.3
 

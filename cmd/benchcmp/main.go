@@ -1,12 +1,13 @@
 package main
 
 import (
-	"dringbuf/internal/bench"
 	"flag"
 	"fmt"
 	"os"
 	"text/tabwriter"
 	"time"
+
+	"github.com/fedorwk/dringbuf/internal/bench"
 )
 
 func main() {
