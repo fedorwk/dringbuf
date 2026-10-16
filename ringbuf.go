@@ -43,20 +43,23 @@ func (b *RingBuffer[T]) Cap() int {
 // where At(0) is the oldest element and At(Len()-1) is the most recent. It
 // panics if idx is negative or not less than Len.
 func (b *RingBuffer[T]) At(idx int) T {
-	if idx < 0 || idx >= b.len {
+	if uint(idx) >= uint(b.len) {
 		panic("dringbuf: index out of range")
 	}
-	return b.buf[b.wrap(b.head+idx)]
+	return b.buf[(b.head+idx)%len(b.buf)]
 }
 
 // Get returns the element at idx and true, or the zero value and false if idx
 // is negative or not less than Len. Unlike At it does not panic.
+//
+// The read paths use % rather than wrap on purpose: it keeps Get cheap enough
+// that callers' one-line wrappers around it still inline (see inline_test.go).
 func (b *RingBuffer[T]) Get(idx int) (T, bool) {
-	if idx < 0 || idx >= b.len {
+	if uint(idx) >= uint(b.len) {
 		var zero T
 		return zero, false
 	}
-	return b.buf[b.wrap(b.head+idx)], true
+	return b.buf[(b.head+idx)%len(b.buf)], true
 }
 
 // Last returns the most recently appended element and true, or the zero value
