@@ -195,7 +195,7 @@ func (s *Subscription[T]) emit(v T) {
 func (s *Subscription[T]) Next() (T, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.waitReadable(nil); err != nil {
+	if err := s.waitReadable(context.Background()); err != nil {
 		var zero T
 		return zero, err
 	}
@@ -233,7 +233,7 @@ func (s *Subscription[T]) Read(dst []T) (int, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.waitReadable(nil); err != nil {
+	if err := s.waitReadable(context.Background()); err != nil {
 		return 0, err
 	}
 	n := copy(dst, s.buf.Tail(s.unread))
@@ -251,7 +251,7 @@ func (s *Subscription[T]) Read(dst []T) (int, error) {
 func (s *Subscription[T]) ReadView(fn func([]T)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.waitReadable(nil); err != nil {
+	if err := s.waitReadable(context.Background()); err != nil {
 		return err
 	}
 	view := s.buf.Tail(s.unread)
@@ -278,10 +278,8 @@ func (s *Subscription[T]) waitReadable(ctx context.Context) error {
 		if s.eof {
 			return io.EOF
 		}
-		if ctx != nil {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		s.notEmpty.Wait()
 	}
