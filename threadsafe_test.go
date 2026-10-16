@@ -70,7 +70,7 @@ func TestThreadSafeRingBuffer_LastAndGet(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestThreadSafeRingBuffer_BorrowReturnsCopy(t *testing.T) {
+func TestThreadSafeRingBuffer_ViewReturnsCopy(t *testing.T) {
 	t.Parallel()
 
 	rb := dringbuf.NewThreadSafeRingBuffer[int](3)
@@ -78,18 +78,17 @@ func TestThreadSafeRingBuffer_BorrowReturnsCopy(t *testing.T) {
 	rb.Append(2)
 	rb.Append(3)
 
-	view, release := rb.Borrow(3)
-	require.Equal(t, []int{1, 2, 3}, view)
+	rb.View(3, func(view []int) {
+		require.Equal(t, []int{1, 2, 3}, view)
+		view[0] = 42
+	})
 
-	view[0] = 42
-	release()
-
-	// Single-array sync Borrow copies, so mutation is not visible.
+	// Single-array View copies, so mutation is not visible.
 	assert.Equal(t, 1, rb.At(0))
 	assert.Equal(t, []int{1, 2, 3}, rb.Tail(3))
 }
 
-func TestThreadSafeRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
+func TestThreadSafeRingBuffer_ViewBlocksWriterUntilReturn(t *testing.T) {
 	t.Parallel()
 
 	rb := dringbuf.NewThreadSafeRingBuffer[int](3)
@@ -97,36 +96,26 @@ func TestThreadSafeRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
 	rb.Append(2)
 	rb.Append(3)
 
-	_, release := rb.Borrow(3)
-
-	writerStarted := make(chan struct{})
 	writerDone := make(chan struct{})
 
-	go func() {
-		close(writerStarted)
-		rb.Append(4) // must block until release()
-		close(writerDone)
-	}()
+	rb.View(3, func([]int) {
+		go func() {
+			rb.Append(4) // must block until View returns
+			close(writerDone)
+		}()
 
-	select {
-	case <-writerStarted:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("writer did not start")
-	}
-
-	// While read lock is held, writer must still be blocked.
-	select {
-	case <-writerDone:
-		t.Fatal("writer completed before borrow release")
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	release()
+		// While the read lock is held, the writer must still be blocked.
+		select {
+		case <-writerDone:
+			t.Fatal("writer completed while View was running")
+		case <-time.After(50 * time.Millisecond):
+		}
+	})
 
 	select {
 	case <-writerDone:
 	case <-time.After(500 * time.Millisecond):
-		t.Fatal("writer did not complete after borrow release")
+		t.Fatal("writer did not complete after View returned")
 	}
 
 	assert.Equal(t, []int{2, 3, 4}, rb.Tail(3))
@@ -142,10 +131,7 @@ func TestThreadSafeRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 		maxWrittenVal = writers * perWriterOps
 	)
 
-	timeout := 8 * time.Second
-	if testing.Short() {
-		timeout = 12 * time.Second
-	}
+	const timeout = 8 * time.Second
 
 	rb := dringbuf.NewThreadSafeRingBuffer[int](capacity)
 
@@ -263,7 +249,7 @@ func TestThreadSafeDoubleRingBuffer_LastAndGet(t *testing.T) {
 	assert.False(t, ok)
 }
 
-func TestThreadSafeDoubleRingBuffer_BorrowReturnsAliasedView(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_ViewReturnsAliasedView(t *testing.T) {
 	t.Parallel()
 
 	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](3)
@@ -271,18 +257,17 @@ func TestThreadSafeDoubleRingBuffer_BorrowReturnsAliasedView(t *testing.T) {
 	rb.Append(2)
 	rb.Append(3)
 
-	view, release := rb.Borrow(3)
-	require.Equal(t, []int{1, 2, 3}, view)
+	rb.View(3, func(view []int) {
+		require.Equal(t, []int{1, 2, 3}, view)
+		view[0] = 42
+	})
 
-	view[0] = 42
-	release()
-
-	// Double-sized Borrow exposes internal memory, so mutation is visible.
+	// Double-sized View exposes internal memory, so mutation is visible.
 	assert.Equal(t, 42, rb.At(0))
 	assert.Equal(t, []int{42, 2, 3}, rb.Tail(3))
 }
 
-func TestThreadSafeDoubleRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T) {
+func TestThreadSafeDoubleRingBuffer_ViewBlocksWriterUntilReturn(t *testing.T) {
 	t.Parallel()
 
 	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](3)
@@ -290,36 +275,26 @@ func TestThreadSafeDoubleRingBuffer_BorrowBlocksWriterUntilRelease(t *testing.T)
 	rb.Append(2)
 	rb.Append(3)
 
-	_, release := rb.Borrow(3)
-
-	writerStarted := make(chan struct{})
 	writerDone := make(chan struct{})
 
-	go func() {
-		close(writerStarted)
-		rb.Append(4) // must block until release()
-		close(writerDone)
-	}()
+	rb.View(3, func([]int) {
+		go func() {
+			rb.Append(4) // must block until View returns
+			close(writerDone)
+		}()
 
-	select {
-	case <-writerStarted:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("writer did not start")
-	}
-
-	// While read lock is held, writer must still be blocked.
-	select {
-	case <-writerDone:
-		t.Fatal("writer completed before borrow release")
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	release()
+		// While the read lock is held, the writer must still be blocked.
+		select {
+		case <-writerDone:
+			t.Fatal("writer completed while View was running")
+		case <-time.After(50 * time.Millisecond):
+		}
+	})
 
 	select {
 	case <-writerDone:
 	case <-time.After(500 * time.Millisecond):
-		t.Fatal("writer did not complete after borrow release")
+		t.Fatal("writer did not complete after View returned")
 	}
 
 	assert.Equal(t, []int{2, 3, 4}, rb.Tail(3))
@@ -335,10 +310,7 @@ func TestThreadSafeDoubleRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 		maxWrittenVal = writers * perWriterOps
 	)
 
-	timeout := 8 * time.Second
-	if testing.Short() {
-		timeout = 12 * time.Second
-	}
+	const timeout = 8 * time.Second
 
 	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](capacity)
 
@@ -394,4 +366,80 @@ func TestThreadSafeDoubleRingBuffer_ConcurrentAccessCompletes(t *testing.T) {
 		assert.GreaterOrEqual(t, v, 0)
 		assert.Less(t, v, maxWrittenVal)
 	}
+}
+
+func TestThreadSafe_PanicInViewReleasesLock(t *testing.T) {
+	t.Parallel()
+
+	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](3)
+	rb.Append(1)
+
+	assert.Panics(t, func() { rb.View(1, func([]int) { panic("boom") }) })
+	assert.Panics(t, func() { rb.View(4, func([]int) {}) })
+	assert.Panics(t, func() { rb.Tail(-1) })
+	assert.Panics(t, func() { rb.AppendTail(nil, 4) })
+
+	done := make(chan struct{})
+	go func() {
+		rb.Append(2)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("buffer stayed locked after a panic")
+	}
+	assert.Equal(t, []int{1, 2}, rb.Tail(3))
+}
+
+func TestThreadSafe_ConcurrentViews(t *testing.T) {
+	t.Parallel()
+
+	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](3)
+	rb.Append(1)
+
+	// Two Views must be able to hold the read lock at the same time.
+	inside := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		rb.View(1, func([]int) {
+			close(inside)
+			<-done
+		})
+	}()
+	<-inside
+
+	second := make(chan struct{})
+	go func() {
+		rb.View(1, func([]int) {})
+		close(second)
+	}()
+	select {
+	case <-second:
+	case <-time.After(time.Second):
+		t.Fatal("second View blocked behind the first")
+	}
+	close(done)
+}
+
+func TestThreadSafe_ZeroAllocs(t *testing.T) {
+	rb := dringbuf.NewThreadSafeDoubleRingBuffer[int](8)
+	for i := range 8 {
+		rb.Append(i)
+	}
+	dst := make([]int, 0, 8)
+	sum := 0
+	view := func(v []int) { sum += len(v) }
+
+	assert.Zero(t, testing.AllocsPerRun(100, func() { rb.Append(1) }))
+	assert.Zero(t, testing.AllocsPerRun(100, func() { rb.View(4, view) }))
+	assert.Zero(t, testing.AllocsPerRun(100, func() { dst = rb.AppendTail(dst[:0], 4) }))
+	assert.Equal(t, 1.0, testing.AllocsPerRun(100, func() { _ = rb.Tail(4) }))
+
+	ring := dringbuf.NewThreadSafeRingBuffer[int](8)
+	for i := range 8 {
+		ring.Append(i)
+	}
+	assert.Zero(t, testing.AllocsPerRun(100, func() { dst = ring.AppendTail(dst[:0], 8) }))
+	assert.Equal(t, 1.0, testing.AllocsPerRun(100, func() { _ = ring.Tail(8) }))
 }

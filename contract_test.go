@@ -3,23 +3,13 @@ package dringbuf_test
 import (
 	"testing"
 
+	"github.com/fedorwk/dringbuf"
 	"github.com/stretchr/testify/assert"
 )
 
-type ringOps[T any] interface {
-	Append(elem T)
-	Len() int
-	Cap() int
-	At(idx int) T
-	Get(idx int) (T, bool)
-	Last() (T, bool)
-	Tail(n int) []T
-	Clear()
-}
+type ringBufferFactory[B dringbuf.Buffer[int]] func(size int) B
 
-type ringBufferFactory[B ringOps[int]] func(size int) B
-
-func runRingBufferContractTests[B ringOps[int]](t *testing.T, newBuf ringBufferFactory[B]) {
+func runRingBufferContractTests[B dringbuf.Buffer[int]](t *testing.T, newBuf ringBufferFactory[B]) {
 	t.Helper()
 
 	type testCase struct {
@@ -117,6 +107,8 @@ func runRingBufferContractTests[B ringOps[int]](t *testing.T, newBuf ringBufferF
 			assert.Equal(t, tc.wantTail1, rb.Tail(1))
 			assert.Equal(t, tc.wantTail2, rb.Tail(2))
 			assert.Equal(t, tc.wantTail3, rb.Tail(3))
+			assert.Equal(t, append([]int{-1}, tc.wantTail2...), rb.AppendTail([]int{-1}, 2))
+			assert.Equal(t, append([]int{-1}, tc.wantTail3...), rb.AppendTail([]int{-1}, 3))
 
 			gotLast, ok := rb.Last()
 			assert.Equal(t, tc.wantLastOK, ok)
@@ -136,7 +128,7 @@ func runRingBufferContractTests[B ringOps[int]](t *testing.T, newBuf ringBufferF
 	}
 }
 
-func runRingBufferCommonPanicTests[B ringOps[int]](t *testing.T, newBuf ringBufferFactory[B]) {
+func runRingBufferCommonPanicTests[B dringbuf.Buffer[int]](t *testing.T, newBuf ringBufferFactory[B]) {
 	t.Helper()
 
 	t.Run("at out of bounds panics", func(t *testing.T) {
@@ -173,6 +165,8 @@ func runRingBufferCommonPanicTests[B ringOps[int]](t *testing.T, newBuf ringBuff
 
 		assert.Panics(t, func() { rb.Tail(-1) })
 		assert.Panics(t, func() { rb.Tail(4) })
+		assert.Panics(t, func() { rb.AppendTail(nil, -1) })
+		assert.Panics(t, func() { rb.AppendTail(nil, 4) })
 	})
 
 	t.Run("non-positive size panics", func(t *testing.T) {
@@ -183,7 +177,7 @@ func runRingBufferCommonPanicTests[B ringOps[int]](t *testing.T, newBuf ringBuff
 	})
 }
 
-func runRingBufferClearAndReuseTests[B ringOps[int]](t *testing.T, newBuf ringBufferFactory[B]) {
+func runRingBufferClearAndReuseTests[B dringbuf.Buffer[int]](t *testing.T, newBuf ringBufferFactory[B]) {
 	t.Helper()
 
 	rb := newBuf(3)

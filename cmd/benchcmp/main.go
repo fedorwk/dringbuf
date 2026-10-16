@@ -63,6 +63,8 @@ func main() {
 		{"stream block", bench.StreamBlock},
 		{"stream drop-oldest", bench.StreamDropOldest},
 		{"stream drop-newest", bench.StreamDropNewest},
+		{"stream block Read", bench.StreamBlockBatch},
+		{"stream block ReadView", bench.StreamBlockView},
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
@@ -84,12 +86,17 @@ func main() {
 		for range *reps {
 			elapsed, n, runOK := handoff(opts, effective)
 			ok = ok && runOK
-			received = n
-			if best == 0 || elapsed < best {
-				best = elapsed
+			// Compare per delivered value: drop strategies deliver a
+			// different count each run.
+			if n > 0 && (received == 0 || elapsed.Seconds()/float64(n) < best.Seconds()/float64(received)) {
+				best, received = elapsed, n
 			}
 		}
 
+		if received == 0 {
+			fmt.Fprintf(w, "%s\t -\t -\t 0\t FAIL\n", v.name)
+			continue
+		}
 		status := "OK"
 		if !ok {
 			status = "FAIL"

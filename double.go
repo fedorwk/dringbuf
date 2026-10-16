@@ -17,13 +17,11 @@ func NewDoubleRingBuffer[T any](size int) *DoubleRingBuffer[T] {
 	}
 	doubleSize := size * 2
 	if doubleSize < size { // integer overflow
-		panic("struct size overflow. Max size of buffer is MaxInt/2 for target architecture")
+		panic("dringbuf: size overflow, max size is MaxInt/2")
 	}
 	return &DoubleRingBuffer[T]{
 		buf:  make([]T, doubleSize),
 		size: size,
-		len:  0,
-		cur:  0,
 	}
 }
 
@@ -84,24 +82,30 @@ func (b *DoubleRingBuffer[T]) Tail(n int) []T {
 		panic("dringbuf: n out of buffer size")
 	}
 	if n > b.len {
-		return b.buf[0:b.len]
+		n = b.len
 	}
 
+	// The full slice expression caps the view so that append on it reallocates
+	// instead of writing into internal storage.
 	end := b.size + b.cur
+	return b.buf[end-n : end : end]
+}
 
-	return b.buf[end-n : end]
+// AppendTail appends the last n most recently appended elements, in
+// oldest-to-newest order, to dst and returns the extended slice. If n exceeds
+// Len it is clamped to Len. It does not allocate when dst has enough spare
+// capacity. It panics if n is negative or greater than Cap.
+func (b *DoubleRingBuffer[T]) AppendTail(dst []T, n int) []T {
+	return append(dst, b.Tail(n)...)
 }
 
 // Clear removes all elements from the buffer and resets it to an empty state.
 func (b *DoubleRingBuffer[T]) Clear() {
-	var zero T
-	for i := range b.buf {
-		b.buf[i] = zero
-	}
+	clear(b.buf)
 	b.cur = 0
 	b.len = 0
 }
 
-func (b DoubleRingBuffer[T]) start() int {
+func (b *DoubleRingBuffer[T]) start() int {
 	return b.cur + b.size - b.len
 }

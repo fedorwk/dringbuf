@@ -23,6 +23,12 @@ const (
 	// StreamDropNewest uses a Stream Subscription that skips new values when
 	// the buffer is full, so the consumer receives the earliest values.
 	StreamDropNewest
+	// StreamBlockBatch is StreamBlock with the consumer copying batches out
+	// via Subscription.Read.
+	StreamBlockBatch
+	// StreamBlockView is StreamBlock with the consumer reading batches in
+	// place via Subscription.ReadView.
+	StreamBlockView
 )
 
 // Options configures a handoff run.
@@ -35,8 +41,8 @@ type Options struct {
 // goroutine. It returns the elapsed time, the number of values the consumer
 // actually received, and whether the received sequence was correct: in order,
 // strictly increasing and — for the lossless strategies — carrying the full
-// checksum. Drop strategies deliberately deliver at most Options.Capacity
-// values, so the checksum does not apply to them.
+// checksum. Drop strategies lose whatever the consumer cannot keep up with, so
+// the checksum does not apply to them.
 func RunHandoff(o Options, messages int) (time.Duration, int, bool) {
 	return runHandoff[Payload8](o, messages, func(i int) Payload8 {
 		return Payload8(i)
@@ -193,11 +199,7 @@ func runStream[T any](o Options, messages int, gen func(i int) T, sum func(T) in
 		n := 0
 		ok := true
 		prev := gen(-1)
-		for {
-			v, err := sub.Next()
-			if err != nil {
-				break
-			}
+		consume := func(v T) {
 			total += sum(v)
 			n++
 			if less(v, prev) {
@@ -205,7 +207,36 @@ func runStream[T any](o Options, messages int, gen func(i int) T, sum func(T) in
 			}
 			prev = v
 		}
-		if o.Kind == StreamBlock && total != int64(messages)*(int64(messages)-1)/2 {
+		switch o.Kind {
+		case StreamBlockBatch:
+			batch := make([]T, o.Capacity)
+			for {
+				k, err := sub.Read(batch)
+				if err != nil {
+					break
+				}
+				for _, v := range batch[:k] {
+					consume(v)
+				}
+			}
+		case StreamBlockView:
+			view := func(vs []T) {
+				for _, v := range vs {
+					consume(v)
+				}
+			}
+			for sub.ReadView(view) == nil {
+			}
+		default:
+			for {
+				v, err := sub.Next()
+				if err != nil {
+					break
+				}
+				consume(v)
+			}
+		}
+		if bp == dringbuf.BackpressureStrategyBlock && total != int64(messages)*(int64(messages)-1)/2 {
 			ok = false
 		}
 		done <- result{total, n, ok}
@@ -215,7 +246,7 @@ func runStream[T any](o Options, messages int, gen func(i int) T, sum func(T) in
 	for i := range messages {
 		s.Emit(gen(i))
 	}
-	sub.Close()
+	s.Close()
 	r := <-done
 
 	return time.Since(start), r.n, r.ok

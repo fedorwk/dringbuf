@@ -3,13 +3,13 @@
 
 Generic ring buffer implementations in Go, available in two flavors:
 
-* **Single-array** — a single-array circular buffer (`NewRingBuffer`, `NewThreadSafeRingBuffer`). `Tail(n)` / `Borrow(n)` return a freshly allocated `[]T`.
+* **Single-array** — a single-array circular buffer (`NewRingBuffer`, `NewThreadSafeRingBuffer`). `Tail(n)` returns a freshly allocated `[]T`.
 * **Double-sized** — uses a **2 × capacity** underlying slice to provide a continuous `slice` view of its elements at any moment in time (`NewDoubleRingBuffer`, `NewThreadSafeDoubleRingBuffer`).
 
 The key design goal of the **double-sized** variant is **zero allocations during runtime operations**.
 The only allocation occurs once — at buffer creation.
 
-This makes it particularly suitable for **data streaming pipelines**, where consumers expect data as `[]T` and allocation overhead must be avoided.
+This makes it particularly suitable for **data streaming pipelines**, where consumers expect data as `[]T` and allocation overhead must be avoided. The package also ships a `Stream` that fans values out to buffered subscribers built on the double-sized buffer.
 
 ## Motivation
 
@@ -25,20 +25,28 @@ The **double-sized** implementation avoids that entirely.
 
 By maintaining an underlying slice of **2 × capacity**, every element is mirrored at an offset equal to the buffer size. This guarantees that the active window is always represented as a **single contiguous slice** in memory.
 
-As a result, for the double-sized variant (`NewDoubleRingBuffer` / `NewThreadSafeDoubleRingBuffer`):
+As a result, for the double-sized variant (`DoubleRingBuffer` / `SyncDoubleRingBuffer`):
 
-* `Tail(n)` returns a `[]T` without allocation (base version, `RingBuffer`)
-* `Borrow(n)` returns a `[]T` and a `Release` function without allocation (thread-safe version, `ThreadSafeRingBuffer`)
+* `Tail(n)` on `DoubleRingBuffer` returns a `[]T` view without allocation
+* `View(n, fn)` on `SyncDoubleRingBuffer` passes that view to `fn` under a read lock, without allocation
 * No copying is required
 * No wrap-around handling is required by the consumer
 * The buffer is allocation-free after initialization
 
-Constructors return concrete types (`*RingBuffer[T]`, `*DoubleRingBuffer[T]`, `*ThreadSafeRingBuffer[B, T]`),
-so method calls are statically dispatched and can be inlined. `NewThreadSafeRingBuffer` and
-`NewThreadSafeDoubleRingBuffer` both return the same `ThreadSafeRingBuffer` wrapper parameterized by
-the concrete underlying buffer type.
+The **single-array** variant (`RingBuffer` / `SyncRingBuffer`) stores each element once in a single slice of capacity `N`. It uses half the memory of the double-sized variant, but `Tail(n)` allocates a new slice and copies. Use `AppendTail(dst, n)` with a reused `dst` to copy without allocating on either variant.
 
-The **single-array** variant (`NewRingBuffer` / `NewThreadSafeRingBuffer`) stores each element once in a single slice of capacity `N`. It uses half the memory of the double-sized variant, but `Tail(n)` and `Borrow(n)` always allocate a new slice and copy.
+## Types
+
+| Constructor | Returns |
+| --- | --- |
+| `NewRingBuffer[T](n)` | `*RingBuffer[T]` |
+| `NewDoubleRingBuffer[T](n)` | `*DoubleRingBuffer[T]` |
+| `NewThreadSafeRingBuffer[T](n)` | `*SyncRingBuffer[T]` |
+| `NewThreadSafeDoubleRingBuffer[T](n)` | `*SyncDoubleRingBuffer[T]` |
+
+`SyncRingBuffer[T]` and `SyncDoubleRingBuffer[T]` are aliases of the generic wrapper
+`ThreadSafeRingBuffer[B, T]`, which works with any `Buffer[T]`. Reads share a read lock;
+`Append` and `Clear` take the write lock. All four types implement `Buffer[T]`.
 
 ## API
 
@@ -52,10 +60,52 @@ Elements are ordered oldest → newest. `At(0)` / `Get(0)` address the oldest el
 | `Get(i) (T, bool)` | Like `At` but returns `false` instead of panicking. |
 | `Last() (T, bool)` | Most recently appended element, or `false` when empty. |
 | `Tail(n) []T` | Last `n` elements (clamped to `Len()`) in oldest → newest order. |
+| `AppendTail(dst, n) []T` | Appends a copy of the last `n` elements to `dst`. |
 | `Clear()` | Remove all elements. |
-| `Borrow(n) ([]T, Release)` | Thread-safe read view; call `Release` when done. |
+| `View(n, fn)` | Thread-safe types only: calls `fn` with the last `n` elements under the read lock. |
 
-Ownership: `Tail`/`Last` copy for `RingBuffer` and `ThreadSafeRingBuffer`; `Tail` and `Borrow` return a view into internal storage for `DoubleRingBuffer` (do not modify, and do not retain past the next `Append`/`Clear`).
+Ownership: `Tail` copies for `RingBuffer` and for both thread-safe types. For `DoubleRingBuffer`, `Tail` returns a view into internal storage, and so does `View` on `SyncDoubleRingBuffer`: do not modify it, and do not keep it past the next `Append`/`Clear` (or past `fn` returning, for `View`). Calling `append` on a view is safe: it always reallocates.
+
+## Stream
+
+```go
+s := dringbuf.NewStream[Event]()
+sub := s.Subscribe(1024, dringbuf.BackpressureStrategyBlock)
+
+go func() {
+	for sub.ReadView(func(batch []Event) { process(batch) }) == nil {
+	}
+}()
+
+s.Emit(e)
+s.Close() // readers drain what they have, then get io.EOF
+```
+
+Every `Emit` is delivered to every subscription. When a subscription's buffer is full, its strategy decides what happens:
+
+| Strategy | When full |
+| --- | --- |
+| `BackpressureStrategyBlock` | `Emit` waits for the reader. Nothing is lost. |
+| `BackpressureStrategyDropOldest` | The oldest unread value is overwritten. |
+| `BackpressureStrategyDropNewest` | The new value is discarded. |
+
+`Emit` delivers to subscriptions one after another, so one full `Block` subscription delays every subscription after it.
+
+Reading (all can be used from several goroutines):
+
+| Method | Description |
+| --- | --- |
+| `Next() (T, error)` | Oldest unread value, blocking until one arrives. |
+| `NextContext(ctx) (T, error)` | Like `Next`, but stops waiting when `ctx` is done. |
+| `Read(dst) (int, error)` | Copies up to `len(dst)` unread values with one lock. |
+| `ReadView(fn) error` | Calls `fn` with all unread values as one contiguous slice, without copying. Emit waits while `fn` runs. |
+
+Closing:
+
+* `Stream.Close()` — the producer is done. Subscriptions can read what they have buffered, then get `io.EOF`. Later `Emit` calls do nothing.
+* `Subscription.Close()` — the consumer is leaving. Buffered values are dropped, blocked `Emit` calls return, and reads return `io.EOF`.
+
+`Emit`, `Next`, `Read` and `ReadView` do not allocate.
 
 ## Core Idea
 

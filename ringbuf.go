@@ -5,7 +5,6 @@ type RingBuffer[T any] struct {
 	buf  []T
 	head int
 	len  int
-	cap  int
 }
 
 // NewRingBuffer creates a RingBuffer with the given capacity. It panics if size
@@ -16,19 +15,17 @@ func NewRingBuffer[T any](size int) *RingBuffer[T] {
 	}
 	return &RingBuffer[T]{
 		buf: make([]T, size),
-		cap: size,
 	}
 }
 
 // Append adds a new element to the buffer. If the buffer is already full, the oldest element is overwritten.
 func (b *RingBuffer[T]) Append(elem T) {
-	idx := (b.head + b.len) % b.cap
-	b.buf[idx] = elem
+	b.buf[b.wrap(b.head+b.len)] = elem
 
-	if b.len < b.cap {
+	if b.len < len(b.buf) {
 		b.len++
 	} else {
-		b.head = (b.head + 1) % b.cap
+		b.head = b.wrap(b.head + 1)
 	}
 }
 
@@ -39,7 +36,7 @@ func (b *RingBuffer[T]) Len() int {
 
 // Cap returns the maximum capacity of the buffer (the total number of elements it can hold).
 func (b *RingBuffer[T]) Cap() int {
-	return b.cap
+	return len(b.buf)
 }
 
 // At returns the element at idx relative to the logical start of the buffer,
@@ -49,7 +46,7 @@ func (b *RingBuffer[T]) At(idx int) T {
 	if idx < 0 || idx >= b.len {
 		panic("dringbuf: index out of range")
 	}
-	return b.buf[(b.head+idx)%b.cap]
+	return b.buf[b.wrap(b.head+idx)]
 }
 
 // Get returns the element at idx and true, or the zero value and false if idx
@@ -59,7 +56,7 @@ func (b *RingBuffer[T]) Get(idx int) (T, bool) {
 		var zero T
 		return zero, false
 	}
-	return b.buf[(b.head+idx)%b.cap], true
+	return b.buf[b.wrap(b.head+idx)], true
 }
 
 // Last returns the most recently appended element and true, or the zero value
@@ -73,27 +70,41 @@ func (b *RingBuffer[T]) Last() (T, bool) {
 // allocated copy and may be modified freely. It panics if n is negative or
 // greater than Cap.
 func (b *RingBuffer[T]) Tail(n int) []T {
-	if n < 0 || n > b.cap {
+	if n < 0 || n > len(b.buf) {
 		panic("dringbuf: n out of buffer size")
 	}
-	if n > b.len {
-		n = b.len
-	}
+	return b.AppendTail(make([]T, 0, min(n, b.len)), n)
+}
 
-	start := (b.head + b.len - n) % b.cap
-	res := make([]T, n)
-	for i := 0; i < n; i++ {
-		res[i] = b.buf[(start+i)%b.cap]
+// AppendTail appends the last n most recently appended elements, in
+// oldest-to-newest order, to dst and returns the extended slice. If n exceeds
+// Len it is clamped to Len. It does not allocate when dst has enough spare
+// capacity. It panics if n is negative or greater than Cap.
+func (b *RingBuffer[T]) AppendTail(dst []T, n int) []T {
+	if n < 0 || n > len(b.buf) {
+		panic("dringbuf: n out of buffer size")
 	}
-	return res
+	n = min(n, b.len)
+
+	start := b.wrap(b.head + b.len - n)
+	if end := start + n; end <= len(b.buf) {
+		return append(dst, b.buf[start:end]...)
+	}
+	dst = append(dst, b.buf[start:]...)
+	return append(dst, b.buf[:n-(len(b.buf)-start)]...)
 }
 
 // Clear removes all elements from the buffer and resets it to an empty state.
 func (b *RingBuffer[T]) Clear() {
-	var zero T
-	for i := range b.buf {
-		b.buf[i] = zero
-	}
+	clear(b.buf)
 	b.head = 0
 	b.len = 0
+}
+
+// wrap maps i in [0, 2*Cap) onto [0, Cap) without a division.
+func (b *RingBuffer[T]) wrap(i int) int {
+	if i >= len(b.buf) {
+		i -= len(b.buf)
+	}
+	return i
 }

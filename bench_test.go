@@ -11,8 +11,7 @@ import (
 // values to a consumer that drains the stream/channel until it is closed, so
 // ns/op is the per-value throughput of that handoff. The drop backpressure
 // stream strategies deliver at most benchMessages (fewer if the consumer
-// cannot keep up), so their per-iteration cost is measured over the values
-// actually delivered.
+// cannot keep up).
 const benchMessages = 100_000
 
 // Payload benchmarks transfer larger value types, so they use fewer messages
@@ -40,6 +39,8 @@ func BenchmarkChanBuffered(b *testing.B)     { benchmarkHandoff(b, bench.ChanBuf
 func BenchmarkStreamBlock(b *testing.B)      { benchmarkHandoff(b, bench.StreamBlock) }
 func BenchmarkStreamDropOldest(b *testing.B) { benchmarkHandoff(b, bench.StreamDropOldest) }
 func BenchmarkStreamDropNewest(b *testing.B) { benchmarkHandoff(b, bench.StreamDropNewest) }
+func BenchmarkStreamBlockBatch(b *testing.B) { benchmarkHandoff(b, bench.StreamBlockBatch) }
+func BenchmarkStreamBlockView(b *testing.B)  { benchmarkHandoff(b, bench.StreamBlockView) }
 
 func BenchmarkChanUnbufferedPayload1K(b *testing.B) {
 	benchmarkPayloadHandoff(b, bench.ChanUnbuffered, bench.RunPayloadHandoff1K)

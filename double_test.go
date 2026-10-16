@@ -50,6 +50,33 @@ func TestDoubleRingBuffer_LastAliasingBehavior(t *testing.T) {
 	assert.Equal(t, []int{99, 2, 3}, rb.Tail(3))
 }
 
+func TestDoubleRingBuffer_AppendOnViewDoesNotAlias(t *testing.T) {
+	t.Parallel()
+
+	rb := dringbuf.NewDoubleRingBuffer[int](4)
+	rb.Append(1)
+	rb.Append(2)
+
+	view := rb.Tail(2)
+	assert.Equal(t, len(view), cap(view), "view must not expose spare capacity")
+
+	grown := append(view, 99)
+	rb.Append(3)
+	assert.Equal(t, []int{1, 2, 99}, grown, "appended slice must not change on later Append")
+}
+
+func TestDoubleRingBuffer_ZeroAllocs(t *testing.T) {
+	rb := dringbuf.NewDoubleRingBuffer[int](8)
+	for i := range 8 {
+		rb.Append(i)
+	}
+	dst := make([]int, 0, 8)
+
+	assert.Zero(t, testing.AllocsPerRun(100, func() { rb.Append(1) }))
+	assert.Zero(t, testing.AllocsPerRun(100, func() { _ = rb.Tail(8) }))
+	assert.Zero(t, testing.AllocsPerRun(100, func() { dst = rb.AppendTail(dst[:0], 8) }))
+}
+
 func TestDoubleRingBuffer_Last(t *testing.T) {
 	t.Parallel()
 
